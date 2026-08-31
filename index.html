@@ -39,8 +39,12 @@ textarea{min-height:88px;resize:vertical}
 .num{display:flex;align-items:center;gap:8px}
 .num button{width:44px;height:44px;flex:none;background:var(--panel2);border:1px solid var(--line);
   color:var(--tx);border-radius:9px;font-size:20px;cursor:pointer;line-height:1}
-.num .val{flex:1;text-align:center;background:var(--panel2);border:1px solid var(--line);
-  border-radius:9px;padding:11px;font-variant-numeric:tabular-nums;font-weight:600}
+.num .val{flex:1;width:100%;min-width:0;text-align:center;background:var(--panel2);
+  border:1px solid var(--line);color:var(--tx);border-radius:9px;padding:11px;
+  font:inherit;font-variant-numeric:tabular-nums;font-weight:600;-moz-appearance:textfield}
+.num .val:focus{outline:none;border-color:var(--ac);background:var(--panel)}
+.num .val::-webkit-outer-spin-button,.num .val::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.num .suf{flex:none;color:var(--tx2);font-size:13px;min-width:34px}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 @media(max-width:520px){.grid2{grid-template-columns:1fr}}
 .res{background:linear-gradient(160deg,var(--panel2),var(--panel));border:1px solid var(--ac);border-radius:var(--r);padding:16px;margin-bottom:10px}
@@ -145,11 +149,27 @@ const IBI = {
   'Otro / a confirmar':   {pct:0,  anios:0, ok:false, nota:''}
 };
 
+/* Deducción de IRPF por obras de mejora energética.
+   La base máxima es POR TECNOLOGÍA: 7.500 € de aerotermia + 7.500 € de fotovoltaica.
+   Con las dos, la base es 15.000 € y el cliente se deduce el % del tramo sobre esa base. */
+const BASE_IRPF = 7500;
 const IRPF = {
-  '40': {pct:40, base:7500, txt:'40% · reducción ≥30% de energía primaria o letra A/B'},
-  '20': {pct:20, base:5000, txt:'20% · reducción ≥7% de demanda de calefacción y refrigeración'},
-  '0':  {pct:0,  base:0,    txt:'Sin deducción / a confirmar'}
+  '60': {pct:60, txt:'60% · rehabilitación energética del edificio (≥30% de energía primaria no renovable o letra A/B)'},
+  '40': {pct:40, txt:'40% · reducción ≥30% de energía primaria o letra A/B en la vivienda'},
+  '20': {pct:20, txt:'20% · reducción ≥7% de demanda de calefacción y refrigeración'},
+  '0':  {pct:0,  txt:'Sin deducción / a confirmar'}
 };
+
+/* Coeficientes de financiación (Finlight).  cuota = importe financiado × coeficiente.
+   Si cambian las tarifas, se cambian aquí y en 00_Config del motor. */
+const COEF_FIN = {
+  72:0.018336, 84:0.01636, 108:0.01376, 120:0.01234902, 132:0.01161679,
+  144:0.01101403, 156:0.01050942, 168:0.01008303, 180:0.00971918,
+  192:0.0094053, 204:0.00913215, 216:0.0088948, 228:0.00868524, 240:0.00850064
+};
+const PLAZOS = [72,84,108,120,132,144,156,168,180,192,204,216,228,240];
+const coefFin = m => COEF_FIN[Number(m)] || 0;
+const plazoTxt = m => m + ' meses · ' + (m/12) + ' años';
 
 const miles = n => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g,'.');
 const eur   = n => miles(n) + ' €';
@@ -180,8 +200,8 @@ const VACIA = {
   placas:0, tipoPlaca:'', inversor:'', numInversores:1, tejado:'teja',
   bateriaKwh:0, bateriaModelo:'',
   /* --- oferta y financiación --- */
-  precioAero:0, precioFV:0, cae:0, tramoIrpf:'40',
-  reserva:0, mensualidades:81, cuotaAero:0, cuotaFV:0,
+  precioAero:0, precioFV:0, cae:0, tramoIrpf:'60',
+  reserva:0, mensualidades:120, cuotaAuto:'si', cuotaAero:0, cuotaFV:0,
   slot:'', garantia:15, campana:'regular',
   /* --- cierre --- */
   estado:'propuesta', fechaDecision:'', observaciones:'', motivoNo:''
@@ -247,7 +267,11 @@ function calc(f){
   /* ----- inversión y ayudas ----- */
   const inversion = (conAero?f.precioAero:0) + (conFV?f.precioFV:0);
   const tramo     = IRPF[f.tramoIrpf] || IRPF['0'];
-  const deduccion = Math.round(Math.min(inversion, tramo.base) * tramo.pct/100);
+  /* Base de deducción: 7.500 € por tecnología. Con las dos, 15.000 €. */
+  const baseAeroIrpf = conAero ? Math.min(f.precioAero, BASE_IRPF) : 0;
+  const baseFVIrpf   = conFV   ? Math.min(f.precioFV,   BASE_IRPF) : 0;
+  const baseIrpf     = tramo.pct > 0 ? baseAeroIrpf + baseFVIrpf : 0;
+  const deduccion    = Math.round(baseIrpf * tramo.pct/100);
   const ibiMun    = IBI[f.municipio] || IBI['Otro / a confirmar'];
   const ibiTotal  = Math.round(f.ibiAnual * ibiMun.pct/100 * ibiMun.anios);
   const ayudas    = deduccion + ibiTotal + f.cae;
@@ -255,18 +279,38 @@ function calc(f){
   const costeReal = Math.max(0, facturado - deduccion - ibiTotal);
   const retorno   = ahorro > 0 ? costeReal / ahorro : 0;
 
-  /* ----- financiación ----- */
-  const cuota     = (conAero?f.cuotaAero:0) + (conFV?f.cuotaFV:0);
+  /* ----- financiación -----
+     El importe financiado de cada tecnología sale del precio, menos el CAE (que se
+     descuenta en la factura de la aerotermia) y menos la parte proporcional de la
+     reserva. La cuota es ese importe por el coeficiente del plazo. */
+  const finBaseAero = conAero ? Math.max(0, f.precioAero - f.cae) : 0;
+  const finBaseFV   = conFV   ? f.precioFV : 0;
+  const finBaseTot  = finBaseAero + finBaseFV;
+  const resAero  = finBaseTot > 0 ? f.reserva * finBaseAero / finBaseTot : 0;
+  const resFV    = finBaseTot > 0 ? f.reserva * finBaseFV   / finBaseTot : 0;
+  const finAero  = Math.max(0, finBaseAero - resAero);
+  const finFV    = Math.max(0, finBaseFV   - resFV);
+  const coef     = coefFin(f.mensualidades);
+  const cuotaAeroAuto = Math.round(finAero * coef * 100) / 100;
+  const cuotaFVAuto   = Math.round(finFV   * coef * 100) / 100;
+  const auto     = f.cuotaAuto !== 'no';
+  const cuotaAero = conAero ? (auto ? cuotaAeroAuto : Number(f.cuotaAero) || 0) : 0;
+  const cuotaFV   = conFV   ? (auto ? cuotaFVAuto   : Number(f.cuotaFV)   || 0) : 0;
+  const cuota     = cuotaAero + cuotaFV;
   const esfuerzo  = cuota - ahorroMes;
   const coste0    = cuota > 0 && esfuerzo <= 0;
   const aplazado  = Math.max(0, facturado - f.reserva);
   const cuotaTeorica = f.mensualidades > 0 ? aplazado / f.mensualidades : 0;
   const plazoCoste0  = ahorroMes > 0 ? Math.ceil(aplazado / ahorroMes) : 0;
+  const totalPagado  = cuota * f.mensualidades + f.reserva;
+  const intereses    = Math.max(0, totalPagado - facturado);
 
   return {kw,cascada,unidades,demanda,acs,acsCat,acumulador,modelo,gama,tanque,separador,
     tejadoTxt,conAero,conFV,factor,luzAnio,combAnio,actual,futuro,ahorro,ahorroMes,
-    inversion,tramo,deduccion,ibiMun,ibiTotal,ayudas,facturado,costeReal,retorno,
-    cuota,esfuerzo,coste0,aplazado,cuotaTeorica,plazoCoste0};
+    inversion,tramo,baseIrpf,baseAeroIrpf,baseFVIrpf,deduccion,ibiMun,ibiTotal,ayudas,
+    facturado,costeReal,retorno,
+    coef,auto,finAero,finFV,cuotaAero,cuotaFV,cuotaAeroAuto,cuotaFVAuto,
+    cuota,esfuerzo,coste0,aplazado,cuotaTeorica,plazoCoste0,totalPagado,intereses};
 }
 
 /* ---------- avisos ---------- */
@@ -301,6 +345,11 @@ function avisos(){
   if(r.conAero && f.caldera==='gas') a.push(W('Cliente de gas natural: el ahorro es más moderado y el coste 0 puede no salir. Argumenta confort, refrigeración y letra energética, y NO prometas coste 0 sin comprobar el número.'));
   if(f.caldera==='gasoil'||f.caldera==='glp') a.push(OK('Cliente de '+(f.caldera==='gasoil'?'gasóleo':'propano')+': es el mejor caso de amortización. Retorno típico de 4 a 6 años.'));
   if(r.cuota>0 && r.coste0) a.push(OK('COSTE 0: la cuota de '+eur2(r.cuota)+'/mes cabe dentro del ahorro de '+eur2(r.ahorroMes)+'/mes. Se puede plantear así.'));
+  if(!r.auto) a.push(W('Las cuotas están puestas <b>a mano</b>, no salen de la tabla de financiación. Comprueba que son las que da la financiera antes de firmar.'));
+  if(r.coef===0) a.push(E('El plazo de '+f.mensualidades+' meses no está en la tabla de coeficientes: la cuota no se puede calcular. Elige uno de los plazos de la lista.'));
+  if(r.auto && r.intereses>0) a.push(I('Con '+f.mensualidades+' meses el cliente paga '+eur(r.totalPagado)+' en total por '+eur(r.facturado)+' de instalación: '+eur(r.intereses)+' de coste de financiación. Dilo si te lo preguntan.'));
+  if(r.tramo.pct===60 && !(r.conAero&&r.conFV)) a.push(I('El 60% es la deducción por rehabilitación energética del edificio. Con una sola tecnología la base es '+eur(r.baseIrpf)+', no '+eur(2*BASE_IRPF)+'.'));
+  if(r.tramo.pct>0 && r.baseIrpf < (r.conAero?BASE_IRPF:0)+(r.conFV?BASE_IRPF:0)) a.push(I('La base de deducción ('+eur(r.baseIrpf)+') es menor que el máximo porque algún precio está por debajo de '+eur(BASE_IRPF)+'.'));
   if(r.cuota>0 && !r.coste0) a.push(W('NO es coste 0: la cuota de '+eur2(r.cuota)+'/mes supera el ahorro de '+eur2(r.ahorroMes)+'/mes en '+eur2(r.esfuerzo)+'. Para que salga a coste 0 harían falta unas '+r.plazoCoste0+' mensualidades. Dilo tal cual: no lo prometas.'));
   if(!f.fechaDecision && f.estado==='propuesta') a.push(E('Sin fecha de decisión. No salgas de la visita sin ella.'));
   return a;
@@ -375,6 +424,7 @@ function filas(f){
     ['Inversión total (€)', r.inversion],
     ['CAE (€)', f.cae],
     ['Tramo IRPF', r.tramo.txt],
+    ['Base de deducción IRPF (€)', r.baseIrpf],
     ['Deducción IRPF (€)', r.deduccion],
     ['IBI anual (€)', f.ibiAnual],
     ['Bonificación IBI', r.ibiMun.pct + '% × ' + r.ibiMun.anios + ' años'],
@@ -386,9 +436,15 @@ function filas(f){
     ['Reserva (€)', f.reserva],
     ['Cantidad aplazada (€)', Math.round(r.aplazado)],
     ['Nº mensualidades', f.mensualidades],
+    ['Coeficiente de financiación', String(r.coef).replace('.',',')],
+    ['Origen de la cuota', r.auto ? 'tabla de financiación' : 'introducida a mano'],
+    ['Importe financiado aerotermia (€)', Math.round(r.finAero)],
+    ['Importe financiado fotovoltaica (€)', Math.round(r.finFV)],
     ['Cuota aerotermia (€/mes)', f.cuotaAero],
     ['Cuota fotovoltaica (€/mes)', f.cuotaFV],
     ['Cuota total (€/mes)', r.cuota.toFixed(2).replace('.',',')],
+    ['Total pagado con financiación (€)', Math.round(r.totalPagado)],
+    ['Coste de financiación (€)', Math.round(r.intereses)],
     ['¿Coste 0?', r.cuota>0 ? (r.coste0?'sí':'no') : 'sin financiación'],
     ['Esfuerzo neto (€/mes)', r.esfuerzo.toFixed(2).replace('.',',')],
     ['Fecha slot instalación', f.slot],
@@ -463,6 +519,7 @@ function toast(txt){
 
 /* ---------- helpers de UI ---------- */
 function set(k,v){
+  if(k==='mensualidades') v = Number(v) || 120;
   F[k]=v;
   if(k==='bateria' && v==='no'){ F.bateriaKwh=0; F.bateriaModelo=''; }
   guardarLocal(); render();
@@ -488,14 +545,29 @@ function seg(k,label,opts,nota){
   return '<div class="card"><label>'+label+'</label><div class="seg">'+b+'</div>'+
     (nota?'<div class="nota">'+nota+'</div>':'')+'</div>';
 }
+/* Campo numérico: se puede teclear directamente o usar los botones + y −.
+   Acepta coma o punto decimal y puntos de millar ("12.990" y "12990" valen igual). */
 function num(k,label,step,min,max,suf,nota){
-  const v = F[k];
-  const disp = (typeof v==='number' && v>=1000 ? miles(v) : String(v).replace('.',',')) + (suf?' '+suf:'');
+  const v = Number(F[k]) || 0;
+  const disp = String(v).replace('.',',');
   return '<div class="card"><label>'+label+'</label><div class="num">'+
     '<button data-b="'+k+'" data-d="'+(-step)+'" data-min="'+min+'" data-max="'+max+'">−</button>'+
-    '<div class="val">'+disp+'</div>'+
+    '<input class="val" type="text" inputmode="decimal" autocomplete="off" '+
+      'data-n="'+k+'" data-min="'+min+'" data-max="'+max+'" value="'+esc(disp)+'">'+
+    (suf?'<span class="suf">'+suf+'</span>':'')+
     '<button data-b="'+k+'" data-d="'+step+'" data-min="'+min+'" data-max="'+max+'">+</button>'+
     '</div>'+(nota?'<div class="nota">'+nota+'</div>':'')+'</div>';
+}
+
+/* "12.990,50" · "12990,5" · "12990.5" → 12990.5 */
+function aNumero(txt){
+  let t = String(txt).trim().replace(/\s|€|%/g,'');
+  if(t==='') return 0;
+  if(t.indexOf(',') !== -1) t = t.replace(/\./g,'').replace(',','.');
+  else if((t.match(/\./g)||[]).length > 1) t = t.replace(/\./g,'');
+  else { const p = t.split('.'); if(p.length===2 && p[1].length===3) t = p.join(''); }
+  const n = parseFloat(t);
+  return isNaN(n) ? 0 : n;
 }
 function sel(k,label,opts,nota){
   const o = opts.map(x=>'<option value="'+esc(x)+'"'+(F[k]==x?' selected':'')+'>'+x+'</option>').join('');
@@ -506,6 +578,11 @@ function kv(k,v,cls){ return '<div class="kv '+(cls||'')+'"><span class="k">'+k+
 
 /* ---------- render ---------- */
 function render(){
+  const pre = calc();
+  if(pre.auto){                       // en automático, F guarda lo que calcula la tabla
+    F.cuotaAero = pre.conAero ? pre.cuotaAeroAuto : 0;
+    F.cuotaFV   = pre.conFV   ? pre.cuotaFVAuto   : 0;
+  }
   const r = calc(), f = F;
   document.getElementById('fecha').textContent = hoy();
   let h = '';
@@ -536,7 +613,7 @@ function render(){
       kv('Inversión llave en mano', eur(r.inversion))+
       kv('− CAE (ya en factura)', '− '+eur(f.cae))+
       kv('Precio de factura', eur(r.facturado))+
-      kv('− Deducción IRPF', '− '+eur(r.deduccion))+
+      kv('− Deducción IRPF ('+r.tramo.pct+'% sobre '+eur(r.baseIrpf)+')', '− '+eur(r.deduccion))+
       kv('− Bonificación IBI ('+r.ibiMun.pct+'% × '+r.ibiMun.anios+' años)', '− '+eur(r.ibiTotal))+
       kv('Coste real tras ayudas', eur(r.costeReal),'tot')+
       (r.ahorro>0?kv('Se paga sola en', r.retorno.toFixed(1).replace('.',',')+' años'):'')+
@@ -544,6 +621,8 @@ function render(){
   }
   if(r.cuota>0){
     h += '<div class="card">'+
+      kv('Plazo', f.mensualidades+' meses ('+(f.mensualidades/12)+' años)')+
+      (f.reserva>0?kv('Reserva', eur(f.reserva)):'')+
       kv('Cuota financiada', eur2(r.cuota)+'/mes')+
       kv('Ahorro mensual', eur2(r.ahorroMes)+'/mes')+
       kv(r.coste0?'Sobra cada mes':'Esfuerzo neto', eur2(Math.abs(r.esfuerzo))+'/mes','tot')+
@@ -639,11 +718,33 @@ function render(){
   if(r.conAero) h += num('precioAero','Precio aerotermia (IVA inc.)',250,0,60000,'€');
   if(r.conFV)   h += num('precioFV','Precio fotovoltaica (IVA inc.)',250,0,60000,'€');
   h += num('cae','CAE a descontar en factura',100,0,6000,'€','Orden habitual: 600–2.500 €. Solo si se sustituye una <b>caldera de combustión</b>. No aplica a obra nueva ni a sustituir calefacción eléctrica.');
-  h += seg('tramoIrpf','Tramo de deducción IRPF',[['40','40%'],['20','20%'],['0','Ninguno']], r.tramo.txt+' · base máxima '+eur(r.tramo.base)+'. Obras hasta 31/12/2026. Requiere certificado energético emitido <b>antes del inicio de la obra</b> (vale si es de los 2 años previos) y otro después.');
+  h += seg('tramoIrpf','Tramo de deducción IRPF',
+        [['60','60%'],['40','40%'],['20','20%'],['0','Ninguno']],
+        r.tramo.txt+'.<br>Base máxima '+eur(BASE_IRPF)+' por tecnología'+
+        (r.conAero&&r.conFV?' → '+eur(2*BASE_IRPF)+' con aerotermia + fotovoltaica':'')+
+        '. Aquí la base es <b>'+eur(r.baseIrpf)+'</b> y la deducción <b>'+eur(r.deduccion)+'</b>.'+
+        ' Obras hasta 31/12/2026. Requiere certificado energético emitido <b>antes del inicio de la obra</b>'+
+        ' (vale si es de los 2 años previos) y otro después.');
   h += num('reserva','Reserva',100,0,10000,'€');
-  h += num('mensualidades','Nº de mensualidades',3,0,180,'ud.', r.aplazado>0?'Cuota teórica sin intereses: <b>'+eur2(r.cuotaTeorica)+'/mes</b>':'');
-  if(r.conAero) h += num('cuotaAero','Cuota aerotermia',5,0,2000,'€/mes');
-  if(r.conFV)   h += num('cuotaFV','Cuota fotovoltaica',5,0,2000,'€/mes');
+  h += '<div class="card"><label>Plazo de financiación</label><select data-k="mensualidades">'+
+       PLAZOS.map(m=>'<option value="'+m+'"'+(Number(F.mensualidades)===m?' selected':'')+'>'+plazoTxt(m)+'</option>').join('')+
+       '</select><div class="nota">Coeficiente Finlight <b>'+String(r.coef).replace('.',',')+'</b>'+
+       ' · cuota = importe financiado × coeficiente.'+
+       (r.aplazado>0?'<br>Sin intereses saldrían '+eur2(r.cuotaTeorica)+'/mes; con financiación, '+eur2(r.cuota)+'/mes.':'')+
+       '</div></div>';
+  h += seg('cuotaAuto','¿De dónde sale la cuota?',
+        [['si','De la tabla de financiación'],['no','La escribo yo']],
+        r.auto
+          ? 'Calculada sola. Importe financiado'+
+            (r.conAero?': aerotermia '+eur(r.finAero):'')+
+            (r.conAero&&r.conFV?' · ':'')+
+            (r.conFV?(r.conAero?'':' : ')+'fotovoltaica '+eur(r.finFV):'')+
+            '. El CAE y la reserva ya van descontados.'
+          : '<b>Cuota puesta a mano.</b> No sale de la tabla: comprueba que es la que da la financiera.');
+  if(r.conAero) h += num('cuotaAero','Cuota aerotermia',5,0,3000,'€/mes',
+        r.auto?'De la tabla: <b>'+eur2(r.cuotaAeroAuto)+'/mes</b>. Si escribes aquí, pasa a manual.':'');
+  if(r.conFV)   h += num('cuotaFV','Cuota fotovoltaica',5,0,3000,'€/mes',
+        r.auto?'De la tabla: <b>'+eur2(r.cuotaFVAuto)+'/mes</b>. Si escribes aquí, pasa a manual.':'');
   h += txt('slot','Fecha de slot de instalación','Semana del ...');
   h += num('garantia','Garantía',1,0,30,'años');
   h += seg('campana','Tipo de oferta',[['regular','Regular'],['campana','Campaña']]);
@@ -689,9 +790,30 @@ document.addEventListener('input', e=>{
   const t = e.target;
   if(t.id === 'endp'){ ENDPOINT = t.value.trim(); guardarLocal(); return; }
   if(t.id === 'clave'){ CLAVE = t.value.trim(); guardarLocal(); return; }
+  const nk = t.getAttribute('data-n');
+  if(nk){
+    const max = Number(t.getAttribute('data-max'));
+    let val = aNumero(t.value);
+    if(val > max) val = max;
+    F[nk] = val;
+    if(nk === 'cuotaAero' || nk === 'cuotaFV') F.cuotaAuto = 'no';
+    guardarLocal();   // sin render: si repintáramos aquí, se perdería el cursor
+    return;
+  }
   const k = t.getAttribute('data-k');
   if(k){ F[k] = t.value; guardarLocal(); }
 });
+/* Al salir del campo se normaliza (mínimo, formato) y se repinta la ficha entera. */
+document.addEventListener('blur', e=>{
+  const t = e.target, nk = t && t.getAttribute && t.getAttribute('data-n');
+  if(!nk) return;
+  const min = Number(t.getAttribute('data-min')), max = Number(t.getAttribute('data-max'));
+  let val = aNumero(t.value);
+  if(val < min) val = min;
+  if(val > max) val = max;
+  F[nk] = Math.round(val*100)/100;
+  guardarLocal(); render();
+}, true);
 document.addEventListener('change', e=>{
   const k = e.target.getAttribute('data-k');
   if(k && e.target.tagName === 'SELECT'){ set(k, e.target.value); }
