@@ -348,7 +348,8 @@ function avisos(){
   if(!r.auto) a.push(W('Las cuotas están puestas <b>a mano</b>, no salen de la tabla de financiación. Comprueba que son las que da la financiera antes de firmar.'));
   if(r.coef===0) a.push(E('El plazo de '+f.mensualidades+' meses no está en la tabla de coeficientes: la cuota no se puede calcular. Elige uno de los plazos de la lista.'));
   if(r.auto && r.intereses>0) a.push(I('Con '+f.mensualidades+' meses el cliente paga '+eur(r.totalPagado)+' en total por '+eur(r.facturado)+' de instalación: '+eur(r.intereses)+' de coste de financiación. Dilo si te lo preguntan.'));
-  if(r.tramo.pct===60 && !(r.conAero&&r.conFV)) a.push(I('El 60% es la deducción por rehabilitación energética del edificio. Con una sola tecnología la base es '+eur(r.baseIrpf)+', no '+eur(2*BASE_IRPF)+'.'));
+  if(r.tramo.pct===60) a.push(W('Tramo del 60%: la ficha calcula '+eur(r.deduccion)+' con base de '+eur(BASE_IRPF)+' por tecnología. La normativa fija además un <b>límite anual</b> de base de deducción, así que puede que el cliente no se lo deduzca todo en un solo ejercicio. Di "hasta '+eur(r.deduccion)+'" y que lo confirme con su asesor: no prometas que se lo devuelven de golpe el año que viene.'));
+  if(r.tramo.pct===60 && !(r.conAero&&r.conFV)) a.push(I('Con una sola tecnología la base es '+eur(r.baseIrpf)+', no '+eur(2*BASE_IRPF)+'.'));
   if(r.tramo.pct>0 && r.baseIrpf < (r.conAero?BASE_IRPF:0)+(r.conFV?BASE_IRPF:0)) a.push(I('La base de deducción ('+eur(r.baseIrpf)+') es menor que el máximo porque algún precio está por debajo de '+eur(BASE_IRPF)+'.'));
   if(r.cuota>0 && !r.coste0) a.push(W('NO es coste 0: la cuota de '+eur2(r.cuota)+'/mes supera el ahorro de '+eur2(r.ahorroMes)+'/mes en '+eur2(r.esfuerzo)+'. Para que salga a coste 0 harían falta unas '+r.plazoCoste0+' mensualidades. Dilo tal cual: no lo prometas.'));
   if(!f.fechaDecision && f.estado==='propuesta') a.push(E('Sin fecha de decisión. No salgas de la visita sin ella.'));
