@@ -545,7 +545,7 @@ function filas(f){
     ['Base de deducción IRPF (€)', r.baseIrpf],
     ['Deducción IRPF (€)', r.deduccion],
     ['IBI anual (€)', f.ibiAnual],
-    ['Bonificación IBI', r.ibiMun.pct + '% × ' + r.ibiMun.anios + ' años'],
+    ['Bonificación IBI', r.ibiMun.pct + '% × ' + r.ibiMun.anios + ' años' + (r.ibiMun.tope ? ', tope ' + r.ibiMun.tope + ' €/año' : '')],
     ['Ahorro IBI total (€)', r.ibiTotal],
     ['Ayudas totales (€)', r.ayudas],
     ['Precio de factura (€)', r.facturado],
@@ -790,7 +790,7 @@ function render(){
       kv('Inversión llave en mano (precio de factura)', eur(r.inversion))+
       kv('− CAE (lo cobra el cliente)', '− '+eur(f.cae))+
       kv('− Deducción IRPF ('+r.tramo.pct+'% sobre '+eur(r.baseIrpf)+')', '− '+eur(r.deduccion))+
-      kv('− Bonificación IBI ('+r.ibiMun.pct+'% × '+r.ibiMun.anios+' años)', '− '+eur(r.ibiTotal))+
+      kv('− Bonificación IBI ('+r.ibiMun.pct+'% × '+r.ibiMun.anios+' años'+(r.ibiMun.tope?', tope '+r.ibiMun.tope+' €/año':'')+')', '− '+eur(r.ibiTotal))+
       kv('Coste real tras ayudas', eur(r.costeReal),'tot')+
       (r.ahorro>0?kv('Se paga sola en', r.retorno.toFixed(1).replace('.',',')+' años'):'')+
       '</div>';
