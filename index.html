@@ -168,6 +168,11 @@ const COEF_FIN = {
   192:0.0094053, 204:0.00913215, 216:0.0088948, 228:0.00868524, 240:0.00850064
 };
 const PLAZOS = [72,84,108,120,132,144,156,168,180,192,204,216,228,240];
+
+/* Precios de catálogo. Si cambian, se cambian aquí y en 00_Config del motor. */
+const KWH_MODULO_BATERIA = 5.3;     // cada módulo son 5,3 kWh
+const PRECIO_MODULO_BATERIA = 2570; // € por módulo, IVA incluido
+const PRECIO_CARGADOR = 1870;       // € el cargador de coche, IVA incluido
 const coefFin = m => COEF_FIN[Number(m)] || 0;
 const plazoTxt = m => m + ' meses · ' + (m/12) + ' años';
 
@@ -205,10 +210,11 @@ const VACIA = {
   modulo:'trio', acsL:0, inerciaL:0, distDep:1.5, distExt:8,
   /* --- fotovoltaica --- */
   placas:0, tipoPlaca:'', inversor:'', numInversores:1, tejado:'teja',
-  bateriaKwh:0, bateriaModelo:'',
+  bateriaModulos:0, bateriaKwh:0, bateriaModelo:'', precioBateria:0, precioCargador:0,
   /* --- oferta y financiación --- */
   precioAero:0, precioFV:0, cae:0, tramoIrpf:'60',
-  reserva:0, mensualidades:120, cuotaAuto:'si', cuotaAero:0, cuotaFV:0,
+  reserva:0, mensualidades:120, cuotaAuto:'si',
+  cuotaAero:0, cuotaFV:0, cuotaBateria:0, cuotaCargador:0,
   slot:'', garantia:15, campana:'regular',
   /* --- cierre --- */
   estado:'propuesta', fechaDecision:'', observaciones:'', motivoNo:''
@@ -272,11 +278,24 @@ function calc(f){
   const ahorroMes= ahorro / 12;
 
   /* ----- inversión y ayudas ----- */
-  const inversion = (conAero?f.precioAero:0) + (conFV?f.precioFV:0);
+  /* Cuatro partidas independientes: aerotermia, fotovoltaica, batería y cargador.
+     Cada una con su precio y su cuota. */
+  const conBat = conFV && f.bateria === 'si';
+  const conCar = f.cargador === 'si';
+  const modulosBat  = conBat ? (Number(f.bateriaModulos) || 0) : 0;
+  const kwhBat      = Math.round(modulosBat * KWH_MODULO_BATERIA * 10) / 10;
+  const precioBatSug = modulosBat * PRECIO_MODULO_BATERIA;
+  const precioAero  = conAero ? (Number(f.precioAero) || 0) : 0;
+  const precioFV    = conFV   ? (Number(f.precioFV)   || 0) : 0;
+  const precioBat   = conBat ? (Number(f.precioBateria) > 0 ? Number(f.precioBateria) : precioBatSug) : 0;
+  const precioCar   = conCar ? (Number(f.precioCargador) > 0 ? Number(f.precioCargador) : PRECIO_CARGADOR) : 0;
+  const inversion   = precioAero + precioFV + precioBat + precioCar;
   const tramo     = IRPF[f.tramoIrpf] || IRPF['0'];
   /* Base de deducción: 7.500 € por tecnología. Con las dos, 15.000 €. */
-  const baseAeroIrpf = conAero ? Math.min(f.precioAero, BASE_IRPF) : 0;
-  const baseFVIrpf   = conFV   ? Math.min(f.precioFV,   BASE_IRPF) : 0;
+  const baseAeroIrpf = conAero ? Math.min(precioAero, BASE_IRPF) : 0;
+  /* La batería forma parte de la instalación fotovoltaica, así que suma a su base.
+     El cargador de coche NO: tiene su propia deducción, distinta de esta. */
+  const baseFVIrpf   = conFV   ? Math.min(precioFV + precioBat, BASE_IRPF) : 0;
   const baseIrpf     = tramo.pct > 0 ? baseAeroIrpf + baseFVIrpf : 0;
   const deduccion    = Math.round(baseIrpf * tramo.pct/100);
   const muniTxt   = munNombre(f);
@@ -293,20 +312,22 @@ function calc(f){
      El importe financiado de cada tecnología sale del precio, menos el CAE (que se
      descuenta en la factura de la aerotermia) y menos la parte proporcional de la
      reserva. La cuota es ese importe por el coeficiente del plazo. */
-  const finBaseAero = conAero ? (Number(f.precioAero) || 0) : 0;
-  const finBaseFV   = conFV   ? f.precioFV : 0;
-  const finBaseTot  = finBaseAero + finBaseFV;
-  const resAero  = finBaseTot > 0 ? f.reserva * finBaseAero / finBaseTot : 0;
-  const resFV    = finBaseTot > 0 ? f.reserva * finBaseFV   / finBaseTot : 0;
-  const finAero  = Math.max(0, finBaseAero - resAero);
-  const finFV    = Math.max(0, finBaseFV   - resFV);
-  const coef     = coefFin(f.mensualidades);
+  const coef = coefFin(f.mensualidades);
+  const repartoRes = p => inversion > 0 ? f.reserva * p / inversion : 0;
+  const finAero = Math.max(0, precioAero - repartoRes(precioAero));
+  const finFV   = Math.max(0, precioFV   - repartoRes(precioFV));
+  const finBat  = Math.max(0, precioBat  - repartoRes(precioBat));
+  const finCar  = Math.max(0, precioCar  - repartoRes(precioCar));
   const cuotaAeroAuto = Math.round(finAero * coef * 100) / 100;
   const cuotaFVAuto   = Math.round(finFV   * coef * 100) / 100;
+  const cuotaBatAuto  = Math.round(finBat  * coef * 100) / 100;
+  const cuotaCarAuto  = Math.round(finCar  * coef * 100) / 100;
   const auto     = f.cuotaAuto !== 'no';
   const cuotaAero = conAero ? (auto ? cuotaAeroAuto : Number(f.cuotaAero) || 0) : 0;
   const cuotaFV   = conFV   ? (auto ? cuotaFVAuto   : Number(f.cuotaFV)   || 0) : 0;
-  const cuota     = cuotaAero + cuotaFV;
+  const cuotaBat  = conBat  ? (auto ? cuotaBatAuto  : Number(f.cuotaBateria)  || 0) : 0;
+  const cuotaCar  = conCar  ? (auto ? cuotaCarAuto  : Number(f.cuotaCargador) || 0) : 0;
+  const cuota     = cuotaAero + cuotaFV + cuotaBat + cuotaCar;
   const esfuerzo  = cuota - ahorroMes;
   const coste0    = cuota > 0 && esfuerzo <= 0;
   const aplazado  = Math.max(0, facturado - f.reserva);
@@ -319,7 +340,10 @@ function calc(f){
     tejadoTxt,conAero,conFV,factor,luzAnio,combAnio,actual,futuro,ahorro,ahorroMes,
     inversion,tramo,baseIrpf,baseAeroIrpf,baseFVIrpf,deduccion,muniTxt,ibiMun,ibiTotal,ayudas,
     facturado,costeReal,retorno,
-    coef,auto,finAero,finFV,cuotaAero,cuotaFV,cuotaAeroAuto,cuotaFVAuto,
+    conBat,conCar,modulosBat,kwhBat,precioAero,precioFV,precioBat,precioCar,precioBatSug,
+    coef,auto,finAero,finFV,finBat,finCar,
+    cuotaAero,cuotaFV,cuotaBat,cuotaCar,
+    cuotaAeroAuto,cuotaFVAuto,cuotaBatAuto,cuotaCarAuto,
     cuota,esfuerzo,coste0,aplazado,cuotaTeorica,plazoCoste0,totalPagado,intereses};
 }
 
@@ -351,7 +375,8 @@ function avisos(){
   if(r.conFV && r.conAero) a.push(f.ec==='si'
     ? I('Dual Clima '+(f.suministro==='tri'?'HTT':'HT')+' EC PRO con Easy Connect: gestión de excedente fotovoltaico integrada hacia ACS e inercia.')
     : W('Sin módulo Easy Connect la máquina va como '+(f.suministro==='tri'?'HTT':'HT')+' PRO: no hay conectividad wifi ni gestión automática del excedente fotovoltaico.'));
-  if(r.conFV && f.bateria==='si' && !f.bateriaKwh) a.push(W('Batería marcada como sí pero sin capacidad: completar kWh y modelo antes de cerrar la ficha.'));
+  if(f.bateria==='si' && !r.conFV) a.push(W('Hay batería marcada pero no fotovoltaica: la batería va con la instalación solar. Revísalo.'));
+  if(r.conBat && !r.modulosBat) a.push(W('Batería marcada como sí pero sin módulos: pon cuántos lleva y completa el modelo antes de cerrar la ficha.'));
 
   if(r.conAero && f.caldera==='gas') a.push(W('Cliente de gas natural: el ahorro es más moderado y el coste 0 puede no salir. Argumenta confort, refrigeración y letra energética, y NO prometas coste 0 sin comprobar el número.'));
   if(f.caldera==='gasoil'||f.caldera==='glp') a.push(OK('Cliente de '+(f.caldera==='gasoil'?'gasóleo':'propano')+': es el mejor caso de amortización. Retorno típico de 4 a 6 años.'));
@@ -421,6 +446,7 @@ function filas(f){
     ['Nº inversores', f.numInversores],
     ['Inversor', f.inversor],
     ['Tipo de tejado', r.tejadoTxt],
+    ['Módulos de batería', f.bateriaModulos],
     ['Batería (kWh)', f.bateriaKwh],
     ['Modelo de batería', f.bateriaModelo],
     ['Gasto luz (€/mes)', f.gastoLuzMes],
@@ -431,8 +457,10 @@ function filas(f){
     ['Ahorro mensual (€)', r.ahorroMes.toFixed(2).replace('.',',')],
     ['Factor de sustitución', r.factor],
     ['Cobertura FV (%)', f.coberturaFV],
-    ['Precio aerotermia (€)', f.precioAero],
-    ['Precio fotovoltaica (€)', f.precioFV],
+    ['Precio aerotermia (€)', r.precioAero],
+    ['Precio fotovoltaica (€)', r.precioFV],
+    ['Precio batería (€)', r.precioBat],
+    ['Precio cargador (€)', r.precioCar],
     ['Inversión total (€)', r.inversion],
     ['CAE (€)', f.cae],
     ['Tramo IRPF', r.tramo.txt],
@@ -452,8 +480,12 @@ function filas(f){
     ['Origen de la cuota', r.auto ? 'tabla de financiación' : 'introducida a mano'],
     ['Importe financiado aerotermia (€)', Math.round(r.finAero)],
     ['Importe financiado fotovoltaica (€)', Math.round(r.finFV)],
+    ['Importe financiado batería (€)', Math.round(r.finBat)],
+    ['Importe financiado cargador (€)', Math.round(r.finCar)],
     ['Cuota aerotermia (€/mes)', f.cuotaAero],
     ['Cuota fotovoltaica (€/mes)', f.cuotaFV],
+    ['Cuota batería (€/mes)', f.cuotaBateria],
+    ['Cuota cargador (€/mes)', f.cuotaCargador],
     ['Cuota total (€/mes)', r.cuota.toFixed(2).replace('.',',')],
     ['Total pagado con financiación (€)', Math.round(r.totalPagado)],
     ['Coste de financiación (€)', Math.round(r.intereses)],
@@ -533,7 +565,8 @@ function toast(txt){
 function set(k,v){
   if(k==='mensualidades') v = Number(v) || 120;
   F[k]=v;
-  if(k==='bateria' && v==='no'){ F.bateriaKwh=0; F.bateriaModelo=''; }
+  if(k==='bateria' && v==='no'){ F.bateriaModulos=0; F.bateriaKwh=0; F.bateriaModelo=''; F.precioBateria=0; F.cuotaBateria=0; }
+  if(k==='cargador' && v==='no'){ F.precioCargador=0; F.cuotaCargador=0; }
   guardarLocal(); render();
 }
 function bump(k,d,min,max){
@@ -590,11 +623,18 @@ function kv(k,v,cls){ return '<div class="kv '+(cls||'')+'"><span class="k">'+k+
 
 /* ---------- render ---------- */
 function render(){
+  const pre0 = calc();
+  F.bateriaKwh = pre0.kwhBat;      // se deriva de los módulos
   const pre = calc();
   if(pre.auto){                       // en automático, F guarda lo que calcula la tabla
-    F.cuotaAero = pre.conAero ? pre.cuotaAeroAuto : 0;
-    F.cuotaFV   = pre.conFV   ? pre.cuotaFVAuto   : 0;
+    F.cuotaAero     = pre.conAero ? pre.cuotaAeroAuto : 0;
+    F.cuotaFV       = pre.conFV   ? pre.cuotaFVAuto   : 0;
+    F.cuotaBateria  = pre.conBat  ? pre.cuotaBatAuto  : 0;
+    F.cuotaCargador = pre.conCar  ? pre.cuotaCarAuto  : 0;
   }
+  // Los precios por defecto se guardan resueltos, para que viajen al motor.
+  F.precioBateria  = pre.precioBat;
+  F.precioCargador = pre.precioCar;
   const r = calc(), f = F;
   document.getElementById('fecha').textContent = hoy();
   let h = '';
@@ -608,7 +648,7 @@ function render(){
           : 'Marca aerotermia y/o fotovoltaica arriba')+'</div>'+
        '<div class="tags">'+
          (r.conAero?'<span class="tag">'+r.kw+' kW</span><span class="tag">'+r.acumulador+'</span><span class="tag">'+(f.refrig==='si'?'Frío + calor':'Solo calor')+'</span>':'')+
-         (r.conFV?'<span class="tag">FV '+f.placas+' placas</span><span class="tag">'+(f.bateria==='si'?'Batería '+f.bateriaKwh+' kWh':'Sin batería')+'</span>':'')+
+         (r.conFV?'<span class="tag">FV '+f.placas+' placas</span><span class="tag">'+(r.conBat?'Batería '+String(r.kwhBat).replace('.',',')+' kWh':'Sin batería')+'</span>':'')+
        '</div></div>';
 
   /* ECONOMÍA */
@@ -724,7 +764,10 @@ function render(){
     h += txt('inversor','Inversor','Marca, modelo y potencia');
     h += seg('tejado','Tipo de tejado',[['teja','Teja'],['pizarra','Pizarra'],['chapa','Chapa'],['plana','Plana'],['suelo','Suelo']]);
     if(f.bateria==='si'){
-      h += num('bateriaKwh','Capacidad de batería',1,0,60,'kWh');
+      h += num('bateriaModulos','Módulos de batería',1,0,12,'ud.',
+            'Cada módulo son <b>'+String(KWH_MODULO_BATERIA).replace('.',',')+' kWh</b> y '+
+            eur(PRECIO_MODULO_BATERIA)+'. '+
+            (r.modulosBat>0 ? 'Total: <b>'+String(r.kwhBat).replace('.',',')+' kWh</b> · '+eur(r.precioBatSug) : 'Pon cuántos módulos lleva.'));
       h += txt('bateriaModelo','Modelo de batería','Marca y modelo');
     }
   }
@@ -733,6 +776,18 @@ function render(){
   h += '<h2>7 · Oferta y financiación</h2>';
   if(r.conAero) h += num('precioAero','Precio aerotermia (IVA inc.)',250,0,60000,'€');
   if(r.conFV)   h += num('precioFV','Precio fotovoltaica (IVA inc.)',250,0,60000,'€');
+  if(r.conBat)  h += num('precioBateria','Precio batería (IVA inc.)',10,0,40000,'€',
+        'Por defecto '+eur(r.precioBatSug)+' ('+r.modulosBat+' × '+eur(PRECIO_MODULO_BATERIA)+'). Déjalo en 0 para usar ese precio, o escribe otro.');
+  if(r.conCar)  h += num('precioCargador','Precio cargador de coche (IVA inc.)',10,0,20000,'€',
+        'Por defecto '+eur(PRECIO_CARGADOR)+'. Déjalo en 0 para usar ese precio, o escribe otro.');
+  if(r.inversion>0) h += '<div class="card"><label>Inversión total</label><div class="num">'+
+        '<div class="val" style="flex:1">'+eur(r.inversion)+'</div></div>'+
+        '<div class="nota">'+
+        (r.conAero?'Aerotermia '+eur(r.precioAero):'')+
+        (r.conFV?' · Fotovoltaica '+eur(r.precioFV):'')+
+        (r.conBat?' · Batería '+eur(r.precioBat):'')+
+        (r.conCar?' · Cargador '+eur(r.precioCar):'')+
+        '</div></div>';
   h += num('cae','CAE estimado',100,0,6000,'€','<b>Lo estimas tú</b>, entre 0 y 6.000 €. Es dinero que <b>cobra el cliente</b>, no la empresa: no se descuenta de la factura, va como ahorro. Solo aplica si se sustituye una <b>caldera de combustión</b>: no en obra nueva ni sustituyendo calefacción eléctrica. Hasta que no se emite el certificado es una estimación, así que dilo como tal.');
   h += seg('tramoIrpf','Tramo de deducción IRPF',
         [['60','60%'],['40','40%'],['20','20%'],['0','Ninguno']],
@@ -751,16 +806,20 @@ function render(){
   h += seg('cuotaAuto','¿De dónde sale la cuota?',
         [['si','De la tabla de financiación'],['no','La escribo yo']],
         r.auto
-          ? 'Calculada sola. Importe financiado'+
-            (r.conAero?': aerotermia '+eur(r.finAero):'')+
-            (r.conAero&&r.conFV?' · ':'')+
-            (r.conFV?(r.conAero?'':' : ')+'fotovoltaica '+eur(r.finFV):'')+
-            '. El CAE y la reserva ya van descontados.'
+          ? 'Calculada sola, partida a partida: '+
+            [r.conAero?'aerotermia '+eur(r.finAero):'', r.conFV?'fotovoltaica '+eur(r.finFV):'',
+             r.conBat?'batería '+eur(r.finBat):'', r.conCar?'cargador '+eur(r.finCar):'']
+              .filter(function(x){return x;}).join(' · ')+
+            '. La reserva ya va repartida entre ellas.'
           : '<b>Cuota puesta a mano.</b> No sale de la tabla: comprueba que es la que da la financiera.');
   if(r.conAero) h += num('cuotaAero','Cuota aerotermia',5,0,3000,'€/mes',
         r.auto?'De la tabla: <b>'+eur2(r.cuotaAeroAuto)+'/mes</b>. Si escribes aquí, pasa a manual.':'');
   if(r.conFV)   h += num('cuotaFV','Cuota fotovoltaica',5,0,3000,'€/mes',
         r.auto?'De la tabla: <b>'+eur2(r.cuotaFVAuto)+'/mes</b>. Si escribes aquí, pasa a manual.':'');
+  if(r.conBat)  h += num('cuotaBateria','Cuota batería',5,0,3000,'€/mes',
+        r.auto?'De la tabla: <b>'+eur2(r.cuotaBatAuto)+'/mes</b>. Si escribes aquí, pasa a manual.':'');
+  if(r.conCar)  h += num('cuotaCargador','Cuota cargador',5,0,3000,'€/mes',
+        r.auto?'De la tabla: <b>'+eur2(r.cuotaCarAuto)+'/mes</b>. Si escribes aquí, pasa a manual.':'');
   h += txt('slot','Fecha de slot de instalación','Semana del ...');
   h += num('garantia','Garantía',1,0,30,'años');
   h += seg('campana','Tipo de oferta',[['regular','Regular'],['campana','Campaña']]);
