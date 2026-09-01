@@ -53,6 +53,9 @@ textarea{min-height:88px;resize:vertical}
   background:rgba(0,0,0,.65);color:#fff;font-size:15px;line-height:1;cursor:pointer;padding:0}
 .foto .n{position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,.6);color:#fff;
   font-size:10px;text-align:center;padding:2px 0}
+.ver{display:inline-block;margin-left:8px;background:var(--acbg);border:1px solid rgba(142,230,0,.35);
+  color:var(--ac2);border-radius:999px;padding:1px 8px;font-size:11px;font-weight:700;vertical-align:middle}
+.ver.sin{background:var(--warnbg);border-color:rgba(245,185,66,.35);color:#f7d79b}
 .modo{display:flex;gap:6px;margin:0 0 14px}
 .modo button{flex:1;background:var(--panel2);border:1px solid var(--line);color:var(--tx2);
   border-radius:9px;padding:11px 8px;font:inherit;font-size:13.5px;font-weight:600;cursor:pointer}
@@ -213,6 +216,16 @@ const eur2  = n => { const v=Math.round(n*100)/100, e=Math.floor(Math.abs(v)),
     return (v<0?'-':'') + miles(e) + ',' + d + ' €'; };
 const hoy   = () => new Date().toLocaleDateString('es-ES',{day:'2-digit',month:'short',year:'numeric'});
 const hoyISO= () => new Date().toISOString().slice(0,10);
+/* Sello de fecha y hora local, "2026-09-01 11:42". Local, no UTC: lo que
+   importa es la hora a la que el comercial tocó la ficha. */
+const ahoraSello = () => { const d=new Date(), p=n=>String(n).padStart(2,'0');
+  return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+' '+p(d.getHours())+':'+p(d.getMinutes()); };
+const selloLegible = t => { if(!t) return '—';
+  const p=String(t).split(' '), d=p[0].split('-');
+  return d.length===3 ? d[2]+'/'+d[1]+'/'+d[0]+(p[1]?' · '+p[1]:'') : String(t); };
+/* Dos fichas son del mismo cliente si coinciden nombre y dirección. */
+const norm = t => String(t==null?'':t).trim().toLowerCase().replace(/\s+/g,' ');
+const claveCliente = f => norm(f.cliente)+'|'+norm(f.direccion);
 
 const KEY_F='zw.ficha.actual.v3', KEY_H='zw.fichas.historico.v3', KEY_URL='zw.endpoint', KEY_CLAVE='zw.clave';
 const KEY_FOTOS='zw.fotos.v1';
@@ -245,7 +258,9 @@ const VACIA = {
   cuotaAero:0, cuotaFV:0, cuotaBateria:0, cuotaCargador:0,
   slot:'', garantiaAero:10, garantiaFV:15, campana:'regular',
   /* --- cierre --- */
-  estado:'propuesta', fechaDecision:'', observaciones:'', motivoNo:''
+  estado:'propuesta', fechaDecision:'', observaciones:'', motivoNo:'',
+  /* --- identidad y versión: una sola ficha por cliente --- */
+  _idCliente:'', _version:0, _creada:'', _modificada:''
 };
 
 /* Seguimiento: un apunte cada vez que se habla con el cliente. */
@@ -254,7 +269,7 @@ const CANALES = [['llamada','Llamada'],['whatsapp','WhatsApp'],['email','Email']
 const ESTADOS_SEG = [['pendiente','Pendiente'],['interesado','Interesado'],
                      ['negociando','Negociando'],['ganado','GANADO'],['perdido','Perdido']];
 const NOTA_VACIA = {
-  ref:'', cliente:'', propuesta:'', idFicha:'',
+  ref:'', busca:'', cliente:'', propuesta:'', direccion:'', idFicha:'',
   fechaISO:'', canal:'llamada', nota:'', proximoPaso:'', proximaFechaISO:'', estado:'pendiente'
 };
 
@@ -294,7 +309,7 @@ function cargarLocal(){ try{
   ENDPOINT = localStorage.getItem(KEY_URL)||'';
   CLAVE = localStorage.getItem(KEY_CLAVE)||'';
   if(f) F = Object.assign({}, VACIA, f);
-  if(Array.isArray(h)) HIST = h;
+  if(Array.isArray(h)) HIST = ordenarHistorico(h);
   const nn = JSON.parse(localStorage.getItem(KEY_NOTAS)||'[]');
   if(Array.isArray(nn)) NOTAS = nn;
   const cc = JSON.parse(localStorage.getItem(KEY_CLI)||'[]');
@@ -303,6 +318,31 @@ function cargarLocal(){ try{
 }catch(e){}
   try{ const ft = JSON.parse(localStorage.getItem(KEY_FOTOS)||'[]');
        if(Array.isArray(ft)) FOTOS = ft; }catch(e){}
+}
+
+/* Fichas de antes del versionado: se les pone identidad y se dejan sin
+   duplicados, quedándose con la más reciente de cada cliente. */
+function ordenarHistorico(lista){
+  const porCliente = {};
+  lista.forEach(function(x){
+    const y = Object.assign({}, x);
+    if(!y._idCliente) y._idCliente = y._id ? String(y._id) : nuevoId();
+    if(!y._creada)    y._creada    = y._fechaISO ? y._fechaISO + ' 00:00' : ahoraSello();
+    if(!y._modificada) y._modificada = y._creada;
+    y._version = Number(y._version) || 0;
+    y._id = y._idCliente;
+    const k = y.cliente ? claveCliente(y) : y._idCliente;
+    const previo = porCliente[k];
+    if(!previo || String(y._modificada) >= String(previo._modificada)){
+      if(previo){ y._creada = previo._creada < y._creada ? previo._creada : y._creada;
+                  y._version = Math.max(y._version, previo._version); }
+      porCliente[k] = y;
+    } else {
+      previo._creada = previo._creada < y._creada ? previo._creada : y._creada;
+      previo._version = Math.max(previo._version, y._version);
+    }
+  });
+  return Object.keys(porCliente).map(function(k){ return porCliente[k]; });
 }
 
 /* ---------- fotos ---------- */
@@ -512,6 +552,9 @@ function filas(f){
   return [
     ['Fecha', f._fecha || hoy()],
     ['Fecha ISO', f._fechaISO || hoyISO()],
+    ['Versión', 'v' + (Number(f._version) || 1)],
+    ['Ficha creada', f._creada || ''],
+    ['Ficha actualizada', f._modificada || ''],
     ['Nº propuesta', f.propuesta],
     ['Técnico comercial', f.tecnico],
     ['Estado', f.estado],
@@ -610,7 +653,8 @@ function filas(f){
     ['Garantía fotovoltaica (años)', f.garantiaFV],
     ['Campaña', f.campana],
     ['Observaciones', f.observaciones],
-    ['Motivo del no', f.motivoNo]
+    ['Motivo del no', f.motivoNo],
+    ['ID cliente', f._idCliente || '']
   ];
 }
 
@@ -638,6 +682,8 @@ function enviar(){
   if(!ENDPOINT){ toast('Falta la URL del motor. Ábrela en «Conexión con el motor» y pégala.'); return; }
   if(!CLAVE){ toast('Falta la clave del motor. Pégala en «Conexión con el motor».'); return; }
   const r = calc();
+  sellarFicha();
+  F._version = (Number(F._version) || 0) + 1;   // v1 el primer envío, v2 el siguiente…
   const idFicha = nuevoId();
   const cuerpo = {
     clave:    CLAVE,
@@ -657,8 +703,9 @@ function enviar(){
       body:JSON.stringify(cuerpo)})
     .then(()=>{
       enviando=false; guardarFicha(true);
-      apuntarCliente(F.cliente, F.propuesta, r.muniTxt, idFicha, F.tecnico);
-      toast('Ficha de '+F.cliente+' enviada. La propuesta le llega a '+F.email+' en menos de 30 minutos.');
+      apuntarCliente(F.cliente, F.propuesta, r.muniTxt, idFicha, F.tecnico, F._idCliente, F.direccion);
+      toast('Ficha de '+F.cliente+' enviada como v'+F._version+
+            '. La propuesta le llega a '+F.email+' en menos de 30 minutos.');
       render();
       if(FOTOS.length) subirFotos(idFicha, cuerpo.cliente, dir);
     })
@@ -705,12 +752,12 @@ function subirFotos(idFicha, cliente, direccion){
 
 /* Cada ficha enviada deja al cliente en la lista del desplegable, para
    no tener que teclear su nombre otra vez dentro de tres semanas. */
-function apuntarCliente(cliente, propuesta, municipio, idFicha, comercial){
+function apuntarCliente(cliente, propuesta, municipio, idFicha, comercial, idCliente, direccion){
   if(!cliente) return;
-  const clave = (cliente+'|'+(propuesta||'')).toLowerCase();
-  CLIENTES = CLIENTES.filter(c => (c.cliente+'|'+(c.propuesta||'')).toLowerCase() !== clave);
+  CLIENTES = CLIENTES.filter(c => (c.idCliente || c.cliente) !== (idCliente || cliente));
   CLIENTES.push({cliente:cliente, propuesta:propuesta||'', municipio:municipio||'',
-                 idFicha:idFicha||'', comercial:comercial||'', fecha:hoyISO()});
+                 direccion:direccion||'', idFicha:idFicha||'', idCliente:idCliente||'',
+                 comercial:comercial||'', fecha:hoyISO()});
   guardarLocal();
 }
 
@@ -785,11 +832,36 @@ function borrarNota(id){
   guardarLocal(); render();
 }
 
+/* Le pone identidad a la ficha si no la tiene y le sella la hora.
+   Si ya existe una ficha del mismo cliente, se queda con SU identidad:
+   por cada cliente hay una ficha, y las modificaciones son versiones. */
+function sellarFicha(){
+  let fusionada = false;
+  if(F.cliente){
+    const gemela = HIST.find(x => x._idCliente !== F._idCliente && claveCliente(x) === claveCliente(F));
+    if(gemela){
+      F._idCliente = gemela._idCliente;
+      F._creada    = gemela._creada || F._creada;
+      F._version   = Math.max(Number(F._version)||0, Number(gemela._version)||0);
+      fusionada = true;
+    }
+  }
+  if(!F._idCliente) F._idCliente = nuevoId();
+  if(!F._creada)    F._creada    = ahoraSello();
+  F._modificada = ahoraSello();
+  return fusionada;
+}
+
 function guardarFicha(silencio){
   if(!F.cliente){ toast('Pon al menos el nombre del cliente antes de guardar.'); return; }
-  HIST = HIST.concat([Object.assign({}, F, {_fecha:hoy(), _fechaISO:hoyISO(), _id:Date.now()})]);
+  const fusionada = sellarFicha();
+  const copia = Object.assign({}, F, {_fecha:hoy(), _fechaISO:hoyISO(), _id:F._idCliente});
+  const i = HIST.findIndex(x => x._idCliente === F._idCliente);
+  if(i >= 0) HIST[i] = copia; else HIST = HIST.concat([copia]);
   guardarLocal();
-  if(!silencio) toast('Ficha de '+F.cliente+' guardada. Ya son '+HIST.length+' en el móvil.');
+  if(!silencio) toast(fusionada
+    ? 'Ya había una ficha de '+F.cliente+': se ha actualizado esa misma, no se crea otra.'
+    : 'Ficha de '+F.cliente+' guardada. '+HIST.length+' cliente'+(HIST.length>1?'s':'')+' en este móvil.');
   render();
 }
 
@@ -896,17 +968,35 @@ function renderSeguimiento(){
   h += '<h2>Apunte de seguimiento <span style="font-size:12px;color:var(--tx2);font-weight:400">· uso interno, el cliente no lo ve</span></h2>';
 
   /* --- de quién --- */
-  const lista = CLIENTES.slice().reverse();
+  const todos = CLIENTES.slice().reverse();
+  const q = norm(N.busca);
+  // Busca a la vez por nombre, dirección, municipio y nº de propuesta.
+  const lista = q ? todos.filter(function(c){
+      return norm(c.cliente).indexOf(q) >= 0 || norm(c.direccion).indexOf(q) >= 0 ||
+             norm(c.municipio).indexOf(q) >= 0 || norm(c.propuesta).indexOf(q) >= 0;
+    }) : todos;
+
+  h += '<div class="card"><label>Buscar cliente</label>'+
+    '<input type="search" data-nk="busca" value="'+esc(N.busca)+'" '+
+      'placeholder="Nombre, calle, municipio o nº de propuesta">'+
+    '<div class="nota">'+(q
+      ? '<b>'+lista.length+'</b> de '+todos.length+' coinciden con «'+esc(N.busca)+'».'+
+        (lista.length ? '' : ' Prueba con menos letras, o elige «Otro cliente» y escríbelo a mano.')
+      : 'Escribe parte del nombre o de la <b>dirección</b> y la lista de abajo se filtra sola.')+
+    '</div></div>';
+
   let ops = '<option value="">— Elige el cliente —</option>';
-  ops += lista.map(function(c,i){
-    const et = c.cliente + (c.propuesta?' · '+c.propuesta:'') + (c.municipio?' · '+c.municipio:'');
-    return '<option value="'+i+'"'+(N.ref===String(i)?' selected':'')+'>'+esc(et)+'</option>';
+  ops += lista.map(function(c){
+    const et = c.cliente + (c.direccion?' · '+c.direccion:'') +
+               (c.municipio?' · '+c.municipio:'') + (c.propuesta?' · '+c.propuesta:'');
+    const v = c.idCliente || c.cliente;
+    return '<option value="'+esc(v)+'"'+(N.ref===String(v)?' selected':'')+'>'+esc(et)+'</option>';
   }).join('');
   ops += '<option value="otro"'+(N.ref==='otro'?' selected':'')+'>— Otro cliente, lo escribo yo —</option>';
 
   h += '<div class="card"><label>Cliente</label><select id="notaCli">'+ops+'</select>'+
-    '<div class="nota">'+(lista.length
-      ? 'Salen los '+lista.length+' cliente'+(lista.length>1?'s':'')+' cuya ficha has enviado desde este móvil. Si el cliente es de otro comercial, elige «Otro cliente».'
+    '<div class="nota">'+(todos.length
+      ? 'Salen los '+todos.length+' cliente'+(todos.length>1?'s':'')+' cuya ficha has enviado desde este móvil. Si el cliente es de otro comercial, elige «Otro cliente».'
       : 'Todavía no has enviado ninguna ficha desde este móvil: elige «Otro cliente» y escribe el nombre tal y como está en la hoja.')+
     '</div></div>';
 
@@ -917,6 +1007,7 @@ function renderSeguimiento(){
       'Con el número el apunte cae seguro en la fila correcta.');
   } else if(N.cliente){
     h += '<div class="msg ok">Apunte para <b>'+esc(N.cliente)+'</b>'+
+      (N.direccion?' · '+esc(N.direccion):'')+
       (N.propuesta?' · propuesta '+esc(N.propuesta):'')+'.</div>';
   }
 
@@ -1244,12 +1335,21 @@ function renderFicha(){
   /* HISTÓRICO */
   h += '<h2>Fichas guardadas en este móvil</h2><div class="card noprint">';
   if(!HIST.length) h += '<div class="nota">Aún no hay fichas guardadas.</div>';
-  else h += HIST.slice().reverse().map(x =>
-    '<div class="hist"><div><div class="n">'+esc(x.cliente||'Sin nombre')+'</div>'+
-    '<div class="d">'+esc(x._fecha||'')+' · '+esc(munNombre(x)||'')+' · '+esc(x.estado||'')+'</div></div>'+
+  else h += HIST.slice()
+    .sort((a,b) => String(b._modificada||'').localeCompare(String(a._modificada||'')))
+    .map(x =>
+    '<div class="hist"><div><div class="n">'+esc(x.cliente||'Sin nombre')+
+      (Number(x._version) ? '<span class="ver">v'+Number(x._version)+'</span>'
+                          : '<span class="ver sin">sin enviar</span>')+'</div>'+
+    '<div class="d">Creada '+esc(selloLegible(x._creada))+'</div>'+
+    '<div class="d">Modificada '+esc(selloLegible(x._modificada))+'</div>'+
+    '<div class="d">'+esc(munNombre(x)||'')+' · '+esc(x.estado||'')+'</div></div>'+
     '<div style="display:flex;gap:6px"><button data-abrir="'+x._id+'">Abrir</button>'+
     '<button data-borrar="'+x._id+'">Borrar</button></div></div>').join('');
   h += '</div>';
+  h += '<div class="msg i">Por cada cliente hay <b>una sola ficha</b>. Si la abres y la vuelves '+
+       'a enviar, sale como <b>versión nueva</b> (v2, v3…) y en la hoja se actualiza su fila: '+
+       'no se crea otra ni se pierde el seguimiento que ya tenga.</div>';
 
   document.getElementById('app').innerHTML = h;
 }
@@ -1258,7 +1358,17 @@ function renderFicha(){
 document.addEventListener('input', e=>{
   const t = e.target;
   const nota_k = t.getAttribute && t.getAttribute('data-nk');
-  if(nota_k){ N[nota_k] = t.value; guardarLocal(); return; }
+  if(nota_k){
+    N[nota_k] = t.value; guardarLocal();
+    // El buscador sí repinta: es lo que filtra la lista. Se le devuelve el
+    // foco y el cursor al final para poder seguir escribiendo.
+    if(nota_k === 'busca'){
+      const pos = t.selectionStart; render();
+      const n = document.querySelector('[data-nk="busca"]');
+      if(n){ n.focus(); try{ n.setSelectionRange(pos, pos); }catch(e){} }
+    }
+    return;
+  }
   if(t.id === 'endp'){ ENDPOINT = t.value.trim(); guardarLocal(); return; }
   if(t.id === 'clave'){ CLAVE = t.value.trim(); guardarLocal(); return; }
   const nk = t.getAttribute('data-n');
@@ -1295,11 +1405,11 @@ document.addEventListener('change', e=>{
    con el ID el motor sabe seguro a qué fila de la hoja pertenece el apunte. */
 function elegirCliente(v){
   N.ref = v;
-  if(v === 'otro'){ N.cliente=''; N.propuesta=''; N.idFicha=''; }
-  else if(v === ''){ N.cliente=''; N.propuesta=''; N.idFicha=''; }
+  if(v === 'otro' || v === ''){ N.cliente=''; N.propuesta=''; N.direccion=''; N.idFicha=''; }
   else {
-    const c = CLIENTES.slice().reverse()[Number(v)];
-    if(c){ N.cliente=c.cliente; N.propuesta=c.propuesta||''; N.idFicha=c.idFicha||''; }
+    const c = CLIENTES.slice().reverse().find(x => (x.idCliente || x.cliente) === v);
+    if(c){ N.cliente=c.cliente; N.propuesta=c.propuesta||'';
+           N.direccion=c.direccion||''; N.idFicha=c.idFicha||''; }
   }
   guardarLocal(); render();
 }
