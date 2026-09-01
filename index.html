@@ -151,6 +151,8 @@ const IBI = {
   'Las Rozas':            {pct:40, anios:5, ok:true,  nota:'Entre 40% y 50% según el porcentaje de suministro cubierto. Aquí va el valor prudente.'},
   'Alcobendas':           {pct:40, anios:3, ok:true,  nota:'Entre 40% y 50% según el porcentaje de suministro cubierto. Aquí va el valor prudente.'},
   'Getafe':               {pct:30, anios:4, ok:true,  nota:'Antes eran 10 años; se redujo a 4.'},
+  'San Sebastián de los Reyes':{pct:50, anios:8, tope:400, ok:false, nota:'Subió del 25% al 50% en 2025. Tope de 400 € al año: si el 50% de tu IBI pasa de esa cifra, la bonificación se queda en 400 €. Sin confirmar contra la ordenanza: compruébalo.'},
+  'Guadalix de la Sierra':{pct:30, anios:5, ok:false, nota:'Sin confirmar contra la ordenanza. Las fuentes que hay dicen que exige cubrir al menos el 70% del suministro total: con una cobertura del 60% NO entraría. Compruébalo en el ayuntamiento antes de ponerlo por escrito.'},
   'Collado Villalba':     {pct:50, anios:5, ok:false, nota:''},
   'Algete':               {pct:50, anios:5, ok:false, nota:''},
   'Majadahonda':          {pct:50, anios:3, ok:false, nota:''},
@@ -372,7 +374,11 @@ function calc(f){
   const deduccion    = Math.round(baseIrpf * tramo.pct/100);
   const muniTxt   = munNombre(f);
   const ibiMun    = IBI[muniTxt] || IBI['Otro / a confirmar'];
-  const ibiTotal  = Math.round(f.ibiAnual * ibiMun.pct/100 * ibiMun.anios);
+  /* Algunos ayuntamientos ponen un tope anual en euros (San Sebastián de los Reyes,
+     400 €/año). Si no hay tope, no se limita nada. */
+  const ibiAnual  = f.ibiAnual * ibiMun.pct/100;
+  const ibiTopado = ibiMun.tope ? Math.min(ibiAnual, ibiMun.tope) : ibiAnual;
+  const ibiTotal  = Math.round(ibiTopado * ibiMun.anios);
   /* El CAE NO se descuenta de la factura: es dinero que cobra el cliente, como el IRPF
      y el IBI. La factura es la inversión completa; el CAE va del lado de las ayudas. */
   const ayudas    = deduccion + ibiTotal + f.cae;
