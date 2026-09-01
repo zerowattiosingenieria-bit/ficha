@@ -171,6 +171,13 @@ const PLAZOS = [72,84,108,120,132,144,156,168,180,192,204,216,228,240];
 const coefFin = m => COEF_FIN[Number(m)] || 0;
 const plazoTxt = m => m + ' meses · ' + (m/12) + ' años';
 
+/* Nombre real del municipio: si está elegido "Otro", el que se haya escrito a mano.
+   Si lo escrito coincide con uno de la tabla, se le aplica su bonificación igual. */
+const munNombre = f => {
+  const otro = String(f.municipioOtro || '').trim();
+  return (f.municipio === 'Otro / a confirmar' && otro) ? otro : f.municipio;
+};
+
 const miles = n => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g,'.');
 const eur   = n => miles(n) + ' €';
 const eur2  = n => { const v=Math.round(n*100)/100, e=Math.floor(Math.abs(v)),
@@ -184,7 +191,7 @@ const KEY_F='zw.ficha.actual.v3', KEY_H='zw.fichas.historico.v3', KEY_URL='zw.en
 const VACIA = {
   /* --- comercial y cliente --- */
   tecnico:'', propuesta:'', cliente:'', dni:'', cotitular:'', dniCotitular:'',
-  direccion:'', municipio:'Madrid', cp:'', telefono:'', email:'', cups:'',
+  direccion:'', municipio:'Madrid', municipioOtro:'', cp:'', telefono:'', email:'', cups:'',
   aero:'si', pv:'si', bateria:'no', cargador:'no',
   /* --- vivienda --- */
   zona:'D', m2:120, altura:2.6, anyo:'1980-2007', personas:4, banos:2,
@@ -272,7 +279,8 @@ function calc(f){
   const baseFVIrpf   = conFV   ? Math.min(f.precioFV,   BASE_IRPF) : 0;
   const baseIrpf     = tramo.pct > 0 ? baseAeroIrpf + baseFVIrpf : 0;
   const deduccion    = Math.round(baseIrpf * tramo.pct/100);
-  const ibiMun    = IBI[f.municipio] || IBI['Otro / a confirmar'];
+  const muniTxt   = munNombre(f);
+  const ibiMun    = IBI[muniTxt] || IBI['Otro / a confirmar'];
   const ibiTotal  = Math.round(f.ibiAnual * ibiMun.pct/100 * ibiMun.anios);
   const ayudas    = deduccion + ibiTotal + f.cae;
   const facturado = Math.max(0, inversion - f.cae);
@@ -307,7 +315,7 @@ function calc(f){
 
   return {kw,cascada,unidades,demanda,acs,acsCat,acumulador,modelo,gama,tanque,separador,
     tejadoTxt,conAero,conFV,factor,luzAnio,combAnio,actual,futuro,ahorro,ahorroMes,
-    inversion,tramo,baseIrpf,baseAeroIrpf,baseFVIrpf,deduccion,ibiMun,ibiTotal,ayudas,
+    inversion,tramo,baseIrpf,baseAeroIrpf,baseFVIrpf,deduccion,muniTxt,ibiMun,ibiTotal,ayudas,
     facturado,costeReal,retorno,
     coef,auto,finAero,finFV,cuotaAero,cuotaFV,cuotaAeroAuto,cuotaFVAuto,
     cuota,esfuerzo,coste0,aplazado,cuotaTeorica,plazoCoste0,totalPagado,intereses};
@@ -322,11 +330,12 @@ function avisos(){
   if(!f.cliente) a.push(E('Falta el nombre del cliente.'));
   if(!f.email) a.push(E('Falta el email: sin él el motor no puede enviar la propuesta.'));
   if(!f.gastoCombAnio && !f.gastoLuzMes) a.push(E('Sin gastos actuales no se puede calcular el ahorro. Pide la factura antes de salir de la casa.'));
-  if(!f.ibiAnual && (IBI[f.municipio]||{}).pct) a.push(W('Falta el IBI anual: sin él no se puede cuantificar la bonificación de '+IBI[f.municipio].pct+'% durante '+IBI[f.municipio].anios+' años.'));
-  const mun = IBI[f.municipio] || IBI['Otro / a confirmar'];
-  if(f.municipio==='Otro / a confirmar') a.push(W('Municipio sin bonificación cargada: consulta la ordenanza fiscal antes de prometer nada.'));
-  else if(!mun.ok) a.push(W('La bonificación de IBI de '+f.municipio+' NO está verificada contra la ordenanza vigente. Compruébala en la web del ayuntamiento antes de ponerla por escrito en la propuesta.'));
-  else if(mun.nota) a.push(I(f.municipio+': '+mun.nota));
+  const mun = r.ibiMun;
+  if(!f.ibiAnual && mun.pct) a.push(W('Falta el IBI anual: sin él no se puede cuantificar la bonificación de '+mun.pct+'% durante '+mun.anios+' años.'));
+  if(f.municipio==='Otro / a confirmar' && !String(f.municipioOtro||'').trim()) a.push(E('Has marcado «Otro»: escribe el nombre del municipio en el campo de debajo.'));
+  else if(!mun.pct) a.push(W(r.muniTxt+': no hay bonificación de IBI cargada. Consulta la ordenanza fiscal del ayuntamiento antes de prometer nada.'));
+  else if(!mun.ok) a.push(W('La bonificación de IBI de '+r.muniTxt+' NO está verificada contra la ordenanza vigente. Compruébala en la web del ayuntamiento antes de ponerla por escrito en la propuesta.'));
+  else if(mun.nota) a.push(I(r.muniTxt+': '+mun.nota));
   if(!f.cups) a.push(W('Falta el CUPS. Está en la factura de la luz y hace falta para la legalización.'));
 
   if(r.conAero && r.cascada) a.push(W('Superficie por encima de 500 m²: cascada de dos unidades de igual potencia. La combinación final la decide el técnico.'));
@@ -371,7 +380,7 @@ function filas(f){
     ['Cotitular', f.cotitular],
     ['DNI cotitular', f.dniCotitular],
     ['Dirección', f.direccion],
-    ['Municipio', f.municipio],
+    ['Municipio', r.muniTxt],
     ['Código postal', f.cp],
     ['Teléfono', f.telefono],
     ['Email', f.email],
@@ -478,7 +487,7 @@ function enviar(){
     clave:    CLAVE,
     cabecera: filas().map(c=>c[0]),
     fila:     filas().map(c=>c[1]==null?'':c[1]),
-    datos:    Object.assign({}, F, {_fecha:hoy(), _fechaISO:hoyISO()}),
+    datos:    Object.assign({}, F, {municipio: r.muniTxt, _fecha:hoy(), _fechaISO:hoyISO()}),
     calculo:  r,
     cliente:  F.cliente,
     email:    F.email,
@@ -645,6 +654,11 @@ function render(){
   h += txt('direccion','Dirección de la instalación','Calle, número, piso');
   h += sel('municipio','Municipio', Object.keys(IBI),
         'Determina la bonificación de IBI. <b>Verifica la ordenanza fiscal vigente antes de ponerlo por escrito.</b>');
+  if(f.municipio === 'Otro / a confirmar')
+    h += txt('municipioOtro','¿Qué municipio?','Escribe el nombre',
+          'Va tal cual a la propuesta, al contrato y a la tarjeta. Sin bonificación de IBI cargada: '+
+          'míralo en la ordenanza fiscal del ayuntamiento. Si resulta que sí está en la lista de arriba, '+
+          'mejor elígelo ahí y se aplica su bonificación solo.');
   h += txt('cp','Código postal','28000','','tel');
   h += txt('telefono','Teléfono','600 00 00 00','','tel');
   h += txt('email','Email del cliente','cliente@correo.es','Sin email el motor no puede enviar la propuesta.','email');
@@ -776,7 +790,7 @@ function render(){
   if(!HIST.length) h += '<div class="nota">Aún no hay fichas guardadas.</div>';
   else h += HIST.slice().reverse().map(x =>
     '<div class="hist"><div><div class="n">'+esc(x.cliente||'Sin nombre')+'</div>'+
-    '<div class="d">'+esc(x._fecha||'')+' · '+esc(x.municipio||'')+' · '+esc(x.estado||'')+'</div></div>'+
+    '<div class="d">'+esc(x._fecha||'')+' · '+esc(munNombre(x)||'')+' · '+esc(x.estado||'')+'</div></div>'+
     '<div style="display:flex;gap:6px"><button data-abrir="'+x._id+'">Abrir</button>'+
     '<button data-borrar="'+x._id+'">Borrar</button></div></div>').join('');
   h += '</div>';
