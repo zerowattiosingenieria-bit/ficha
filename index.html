@@ -53,6 +53,16 @@ textarea{min-height:88px;resize:vertical}
   background:rgba(0,0,0,.65);color:#fff;font-size:15px;line-height:1;cursor:pointer;padding:0}
 .foto .n{position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,.6);color:#fff;
   font-size:10px;text-align:center;padding:2px 0}
+.modo{display:flex;gap:6px;margin:0 0 14px}
+.modo button{flex:1;background:var(--panel2);border:1px solid var(--line);color:var(--tx2);
+  border-radius:9px;padding:11px 8px;font:inherit;font-size:13.5px;font-weight:600;cursor:pointer}
+.modo button.on{background:var(--acbg);border-color:var(--ac);color:var(--ac2)}
+.apunte{border:1px solid var(--line);border-radius:9px;padding:11px 12px;margin-bottom:8px;background:var(--panel2)}
+.apunte .c{font-weight:600;font-size:14px}
+.apunte .d{font-size:12px;color:var(--tx2);margin:2px 0 6px}
+.apunte .t{font-size:13.5px;line-height:1.5;white-space:pre-wrap}
+.apunte .p{font-size:12.5px;color:var(--ac2);margin-top:6px;font-weight:600}
+.apunte.pend{border-color:rgba(245,185,66,.5)}
 .bfoto{display:block;width:100%;background:var(--acbg);border:1px dashed var(--ac);color:var(--ac2);
   border-radius:9px;padding:14px;font:inherit;font-weight:600;cursor:pointer;text-align:center}
 @media(max-width:520px){.grid2{grid-template-columns:1fr}}
@@ -116,6 +126,7 @@ details[open] summary::before{content:"▾ "}
 
 <div class="bar"><div class="in">
   <button class="p" id="bEnviar">Enviar ficha</button>
+  <button class="p" id="bNota" style="display:none">Guardar apunte</button>
   <button id="bGuardar">Guardar</button>
   <button id="bCsv">Exportar CSV</button>
   <button id="bPrint">Imprimir / PDF</button>
@@ -205,6 +216,7 @@ const hoyISO= () => new Date().toISOString().slice(0,10);
 
 const KEY_F='zw.ficha.actual.v3', KEY_H='zw.fichas.historico.v3', KEY_URL='zw.endpoint', KEY_CLAVE='zw.clave';
 const KEY_FOTOS='zw.fotos.v1';
+const KEY_NOTAS='zw.notas.v1', KEY_CLI='zw.clientes.v1', KEY_MODO='zw.modo.v1';
 const MAX_FOTOS = 10;
 const LADO_FOTO = 1920;    // px del lado mayor
 const CALIDAD_FOTO = 0.8;  // JPEG
@@ -236,6 +248,22 @@ const VACIA = {
   estado:'propuesta', fechaDecision:'', observaciones:'', motivoNo:''
 };
 
+/* Seguimiento: un apunte cada vez que se habla con el cliente. */
+const CANALES = [['llamada','Llamada'],['whatsapp','WhatsApp'],['email','Email'],
+                 ['visita','Visita'],['otro','Otro']];
+const ESTADOS_SEG = [['pendiente','Pendiente'],['interesado','Interesado'],
+                     ['negociando','Negociando'],['ganado','GANADO'],['perdido','Perdido']];
+const NOTA_VACIA = {
+  ref:'', cliente:'', propuesta:'', idFicha:'',
+  fechaISO:'', canal:'llamada', nota:'', proximoPaso:'', proximaFechaISO:'', estado:'pendiente'
+};
+
+let MODO = 'ficha';    // 'ficha' | 'seguimiento'
+let N = Object.assign({}, NOTA_VACIA);
+let NOTAS = [];        // apuntes escritos en este móvil
+let CLIENTES = [];     // clientes cuya ficha se ha enviado desde este móvil
+let mandandoNota = false;
+
 let F = Object.assign({}, VACIA);
 let FOTOS = [];        // {nombre, url (dataURL), kb}
 let subiendo = false;
@@ -250,6 +278,9 @@ function guardarLocal(){ try{
   localStorage.setItem(KEY_H, JSON.stringify(HIST));
   localStorage.setItem(KEY_URL, ENDPOINT);
   localStorage.setItem(KEY_CLAVE, CLAVE);
+  localStorage.setItem(KEY_NOTAS, JSON.stringify(NOTAS.slice(-200)));
+  localStorage.setItem(KEY_CLI, JSON.stringify(CLIENTES.slice(-200)));
+  localStorage.setItem(KEY_MODO, MODO);
 }catch(e){}
   /* Las fotos van aparte y en su propio try: pesan mucho y el móvil puede
      quedarse sin sitio. Si no caben, siguen en memoria hasta que se envíen. */
@@ -264,6 +295,11 @@ function cargarLocal(){ try{
   CLAVE = localStorage.getItem(KEY_CLAVE)||'';
   if(f) F = Object.assign({}, VACIA, f);
   if(Array.isArray(h)) HIST = h;
+  const nn = JSON.parse(localStorage.getItem(KEY_NOTAS)||'[]');
+  if(Array.isArray(nn)) NOTAS = nn;
+  const cc = JSON.parse(localStorage.getItem(KEY_CLI)||'[]');
+  if(Array.isArray(cc)) CLIENTES = cc;
+  MODO = localStorage.getItem(KEY_MODO)==='seguimiento' ? 'seguimiento' : 'ficha';
 }catch(e){}
   try{ const ft = JSON.parse(localStorage.getItem(KEY_FOTOS)||'[]');
        if(Array.isArray(ft)) FOTOS = ft; }catch(e){}
@@ -621,6 +657,7 @@ function enviar(){
       body:JSON.stringify(cuerpo)})
     .then(()=>{
       enviando=false; guardarFicha(true);
+      apuntarCliente(F.cliente, F.propuesta, r.muniTxt, idFicha, F.tecnico);
       toast('Ficha de '+F.cliente+' enviada. La propuesta le llega a '+F.email+' en menos de 30 minutos.');
       render();
       if(FOTOS.length) subirFotos(idFicha, cuerpo.cliente, dir);
@@ -660,6 +697,92 @@ function subirFotos(idFicha, cliente, direccion){
       .catch(function(){ fallos++; i++; siguiente(); });
   };
   siguiente();
+}
+
+/* ============================================================
+   SEGUIMIENTO · apuntes de cada conversación con el cliente
+   ============================================================ */
+
+/* Cada ficha enviada deja al cliente en la lista del desplegable, para
+   no tener que teclear su nombre otra vez dentro de tres semanas. */
+function apuntarCliente(cliente, propuesta, municipio, idFicha, comercial){
+  if(!cliente) return;
+  const clave = (cliente+'|'+(propuesta||'')).toLowerCase();
+  CLIENTES = CLIENTES.filter(c => (c.cliente+'|'+(c.propuesta||'')).toLowerCase() !== clave);
+  CLIENTES.push({cliente:cliente, propuesta:propuesta||'', municipio:municipio||'',
+                 idFicha:idFicha||'', comercial:comercial||'', fecha:hoyISO()});
+  guardarLocal();
+}
+
+function notaNueva(){
+  const tec = F.tecnico;
+  N = Object.assign({}, NOTA_VACIA, {fechaISO:hoyISO(), comercial:tec});
+  guardarLocal();
+}
+
+function enviarNota(){
+  if(!N.nota || !N.nota.trim()){ toast('Escribe qué habéis hablado.'); return; }
+  if(!N.cliente){ toast('Dime de qué cliente es el apunte.'); return; }
+  if(!ENDPOINT || !CLAVE){ toast('Falta la URL o la clave del motor. Míralo en la pestaña Ficha, abajo del todo.'); return; }
+
+  const apunte = {
+    _id: Date.now(),
+    cliente: N.cliente, propuesta: N.propuesta, idFicha: N.idFicha,
+    comercial: F.tecnico || N.comercial || '',
+    fechaISO: N.fechaISO || hoyISO(),
+    canal: N.canal, nota: N.nota.trim(),
+    proximoPaso: N.proximoPaso, proximaFechaISO: N.proximaFechaISO,
+    estado: N.estado, enviada: false
+  };
+  NOTAS = NOTAS.concat([apunte]);
+  mandandoNota = true; guardarLocal(); render();
+
+  mandarApunte(apunte)
+    .then(()=>{ marcarEnviada(apunte._id, true);
+      mandandoNota = false; notaNueva(); render();
+      toast('Apunte de '+apunte.cliente+' enviado. Queda en la hoja, en su fila del REGISTRO y en su tarjeta de Trello.'); })
+    .catch(()=>{ mandandoNota = false; guardarLocal(); render();
+      toast('Sin conexión: el apunte se ha quedado guardado en el móvil. Pulsa «Reintentar» cuando tengas cobertura.'); });
+}
+
+function mandarApunte(a){
+  return fetch(ENDPOINT,{method:'POST',mode:'no-cors',
+    headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body:JSON.stringify({
+      clave: CLAVE, accion:'nota',
+      cliente: a.cliente, propuesta: a.propuesta, idFicha: a.idFicha,
+      comercial: a.comercial, fechaISO: a.fechaISO, canal: a.canal,
+      nota: a.nota, proximoPaso: a.proximoPaso,
+      proximaFechaISO: a.proximaFechaISO, estado: a.estado
+    })});
+}
+
+function marcarEnviada(id, ok){
+  NOTAS = NOTAS.map(x => String(x._id)===String(id) ? Object.assign({}, x, {enviada:ok}) : x);
+  guardarLocal();
+}
+
+function reintentarNotas(){
+  const cola = NOTAS.filter(x => !x.enviada);
+  if(!cola.length){ toast('No hay apuntes pendientes.'); return; }
+  let i = 0, fallos = 0;
+  const siguiente = function(){
+    if(i >= cola.length){
+      render();
+      toast(fallos ? (cola.length-fallos)+' de '+cola.length+' enviados. '+fallos+' siguen pendientes.'
+                   : cola.length+' apunte'+(cola.length>1?'s':'')+' enviados.');
+      return;
+    }
+    mandarApunte(cola[i])
+      .then(()=>{ marcarEnviada(cola[i]._id, true); i++; siguiente(); })
+      .catch(()=>{ fallos++; i++; siguiente(); });
+  };
+  siguiente();
+}
+
+function borrarNota(id){
+  NOTAS = NOTAS.filter(x => String(x._id) !== String(id));
+  guardarLocal(); render();
 }
 
 function guardarFicha(silencio){
@@ -747,7 +870,134 @@ function sel(k,label,opts,nota){
 function kv(k,v,cls){ return '<div class="kv '+(cls||'')+'"><span class="k">'+k+'</span><span class="v">'+v+'</span></div>'; }
 
 /* ---------- render ---------- */
+function conmutador(){
+  return '<div class="modo noprint">'+
+    '<button data-modo="ficha" class="'+(MODO==='ficha'?'on':'')+'">Ficha de visita</button>'+
+    '<button data-modo="seguimiento" class="'+(MODO==='seguimiento'?'on':'')+'">Seguimiento'+
+      (NOTAS.filter(x=>!x.enviada).length ? ' ('+NOTAS.filter(x=>!x.enviada).length+' sin enviar)' : '')+
+    '</button></div>';
+}
+
+function ntxt(k,label,ph,nota,tipo){
+  return '<div class="card"><label>'+label+'</label>'+
+    '<input type="'+(tipo||'text')+'" data-nk="'+k+'" value="'+esc(N[k])+'" placeholder="'+esc(ph||'')+'">'+
+    (nota?'<div class="nota">'+nota+'</div>':'')+'</div>';
+}
+function nseg(k,label,opts,nota){
+  const b = opts.map(o=>'<button data-nseg="'+k+'" data-v="'+esc(o[0])+'" class="'+(N[k]==o[0]?'on':'')+'">'+o[1]+'</button>').join('');
+  return '<div class="card"><label>'+label+'</label><div class="seg">'+b+'</div>'+
+    (nota?'<div class="nota">'+nota+'</div>':'')+'</div>';
+}
+
+function renderSeguimiento(){
+  let h = conmutador();
+  const pend = NOTAS.filter(x=>!x.enviada).length;
+
+  h += '<h2>Apunte de seguimiento <span style="font-size:12px;color:var(--tx2);font-weight:400">· uso interno, el cliente no lo ve</span></h2>';
+
+  /* --- de quién --- */
+  const lista = CLIENTES.slice().reverse();
+  let ops = '<option value="">— Elige el cliente —</option>';
+  ops += lista.map(function(c,i){
+    const et = c.cliente + (c.propuesta?' · '+c.propuesta:'') + (c.municipio?' · '+c.municipio:'');
+    return '<option value="'+i+'"'+(N.ref===String(i)?' selected':'')+'>'+esc(et)+'</option>';
+  }).join('');
+  ops += '<option value="otro"'+(N.ref==='otro'?' selected':'')+'>— Otro cliente, lo escribo yo —</option>';
+
+  h += '<div class="card"><label>Cliente</label><select id="notaCli">'+ops+'</select>'+
+    '<div class="nota">'+(lista.length
+      ? 'Salen los '+lista.length+' cliente'+(lista.length>1?'s':'')+' cuya ficha has enviado desde este móvil. Si el cliente es de otro comercial, elige «Otro cliente».'
+      : 'Todavía no has enviado ninguna ficha desde este móvil: elige «Otro cliente» y escribe el nombre tal y como está en la hoja.')+
+    '</div></div>';
+
+  if(N.ref === 'otro'){
+    h += ntxt('cliente','Nombre del cliente','Tal y como aparece en la hoja',
+      '<b>Escríbelo igual que en la ficha.</b> Es lo que usa el motor para encontrar su fila.');
+    h += ntxt('propuesta','Nº de propuesta (si lo sabes)','Ej. 2026-0134',
+      'Con el número el apunte cae seguro en la fila correcta.');
+  } else if(N.cliente){
+    h += '<div class="msg ok">Apunte para <b>'+esc(N.cliente)+'</b>'+
+      (N.propuesta?' · propuesta '+esc(N.propuesta):'')+'.</div>';
+  }
+
+  /* --- cuándo y por dónde --- */
+  h += ntxt('fechaISO','Día del contacto','','Hoy por defecto. Cámbialo si apuntas una conversación de días atrás.','date');
+  h += nseg('canal','Por dónde ha sido', CANALES);
+
+  /* --- qué se habló --- */
+  h += '<div class="card"><label>Qué habéis hablado</label>'+
+    '<textarea data-nk="nota" rows="5" placeholder="Con sus palabras. Objeciones, quién decide, plazos, precios que ha comparado…">'+esc(N.nota)+'</textarea>'+
+    '<div class="nota">Esto es lo que leerá el que coja el cliente dentro de un mes. Cuanto más literal, mejor.</div></div>';
+
+  /* --- próximo paso --- */
+  h += ntxt('proximoPaso','Próximo paso','Ej. llamar para confirmar la financiación',
+    'Sin próximo paso el cliente se enfría. Aparece en la pestaña AGENDA de la hoja.');
+  h += ntxt('proximaFechaISO','¿Qué día?','','El día que toque, saldrá en AGENDA. Si lo dejas vacío, ese cliente no aparece en ninguna lista.','date');
+
+  /* --- estado --- */
+  h += nseg('estado','Cómo está el cliente ahora', ESTADOS_SEG,
+    'Actualiza la columna «Seguimiento» de la hoja. Lo último que pongas manda.');
+
+  /* --- apuntes de este móvil --- */
+  h += '<h2>Apuntes escritos en este móvil</h2>';
+  if(pend) h += '<div class="msg w"><b>'+pend+' apunte'+(pend>1?'s':'')+' sin enviar.</b> '+
+    'Se quedaron guardados por falta de cobertura. <button id="bReintentar" style="margin-left:6px;background:var(--acbg);border:1px solid var(--ac);color:var(--ac2);border-radius:7px;padding:4px 10px;font:inherit;font-size:12.5px;font-weight:600;cursor:pointer">Reintentar</button></div>';
+
+  h += '<div class="card noprint">';
+  if(!NOTAS.length) h += '<div class="nota">Todavía no hay apuntes. El primero que escribas aparecerá aquí.</div>';
+  else h += NOTAS.slice().reverse().slice(0,30).map(function(x){
+    const can = (CANALES.find(c=>c[0]===x.canal)||['','']) [1];
+    const est = (ESTADOS_SEG.find(c=>c[0]===x.estado)||['','']) [1];
+    return '<div class="apunte'+(x.enviada?'':' pend')+'">'+
+      '<div class="c">'+esc(x.cliente)+'</div>'+
+      '<div class="d">'+esc(fechaCorta(x.fechaISO))+(can?' · '+can:'')+(est?' · '+est:'')+
+        (x.enviada?'':' · <b style="color:var(--warn)">sin enviar</b>')+'</div>'+
+      '<div class="t">'+esc(x.nota)+'</div>'+
+      (x.proximoPaso?'<div class="p">→ '+esc(x.proximoPaso)+(x.proximaFechaISO?' · '+esc(fechaCorta(x.proximaFechaISO)):'')+'</div>':'')+
+      '<div style="margin-top:8px"><button data-borranota="'+x._id+'">Quitar de la lista</button></div>'+
+      '</div>';
+  }).join('');
+  h += '</div>';
+  h += '<div class="msg i">Quitar un apunte de esta lista <b>no lo borra de la hoja</b>: '+
+       'lo que ya se envió queda registrado para siempre en la pestaña SEGUIMIENTO.</div>';
+
+  document.getElementById('app').innerHTML = h;
+}
+
+function fechaCorta(iso){
+  if(!iso) return '';
+  const p = String(iso).split('-');
+  if(p.length!==3) return iso;
+  return p[2]+'/'+p[1]+'/'+p[0];
+}
+
 function render(){
+  if(MODO === 'seguimiento'){
+    if(!N.fechaISO) N.fechaISO = hoyISO();
+    document.getElementById('fecha').textContent = hoy();
+    renderSeguimiento();
+    barra();
+    return;
+  }
+  renderFicha();
+  barra();
+}
+
+function barra(){
+  const seg = MODO === 'seguimiento';
+  const v = function(id, mostrar, texto, off){
+    const b = document.getElementById(id); if(!b) return;
+    b.style.display = mostrar ? '' : 'none';
+    if(texto != null) b.textContent = texto;
+    if(off != null) b.disabled = off;
+  };
+  v('bEnviar', !seg, enviando ? 'Enviando…' : (subiendo ? 'Subiendo fotos…' : 'Enviar ficha'), enviando || subiendo);
+  v('bGuardar', !seg); v('bCsv', !seg); v('bPrint', !seg);
+  v('bNota', seg, mandandoNota ? 'Guardando…' : 'Guardar apunte', mandandoNota);
+  v('bNueva', true, seg ? 'Apunte nuevo' : 'Ficha nueva');
+}
+
+function renderFicha(){
   const pre0 = calc();
   F.bateriaKwh = pre0.kwhBat;      // se deriva de los módulos
   const pre = calc();
@@ -762,7 +1012,7 @@ function render(){
   F.precioCargador = pre.precioCar;
   const r = calc(), f = F;
   document.getElementById('fecha').textContent = hoy();
-  let h = '';
+  let h = conmutador();
 
   /* RESUMEN */
   h += '<h2>Resumen en vivo</h2>';
@@ -1002,14 +1252,13 @@ function render(){
   h += '</div>';
 
   document.getElementById('app').innerHTML = h;
-  document.getElementById('bEnviar').textContent =
-    enviando ? 'Enviando…' : (subiendo ? 'Subiendo fotos…' : 'Enviar ficha');
-  document.getElementById('bEnviar').disabled = enviando || subiendo;
 }
 
 /* ---------- eventos ---------- */
 document.addEventListener('input', e=>{
   const t = e.target;
+  const nota_k = t.getAttribute && t.getAttribute('data-nk');
+  if(nota_k){ N[nota_k] = t.value; guardarLocal(); return; }
   if(t.id === 'endp'){ ENDPOINT = t.value.trim(); guardarLocal(); return; }
   if(t.id === 'clave'){ CLAVE = t.value.trim(); guardarLocal(); return; }
   const nk = t.getAttribute('data-n');
@@ -1037,14 +1286,32 @@ document.addEventListener('blur', e=>{
   guardarLocal(); render();
 }, true);
 document.addEventListener('change', e=>{
+  if(e.target.id === 'notaCli'){ elegirCliente(e.target.value); return; }
   const k = e.target.getAttribute('data-k');
   if(k && e.target.tagName === 'SELECT'){ set(k, e.target.value); }
 });
+
+/* Al elegir del desplegable se rellenan nombre, nº de propuesta e ID de ficha:
+   con el ID el motor sabe seguro a qué fila de la hoja pertenece el apunte. */
+function elegirCliente(v){
+  N.ref = v;
+  if(v === 'otro'){ N.cliente=''; N.propuesta=''; N.idFicha=''; }
+  else if(v === ''){ N.cliente=''; N.propuesta=''; N.idFicha=''; }
+  else {
+    const c = CLIENTES.slice().reverse()[Number(v)];
+    if(c){ N.cliente=c.cliente; N.propuesta=c.propuesta||''; N.idFicha=c.idFicha||''; }
+  }
+  guardarLocal(); render();
+}
 document.addEventListener('change', e=>{
   if(e.target.id === 'fotoIn'){ anadirFotos(e.target.files); e.target.value=''; }
 });
 document.addEventListener('click', e=>{
   const b = e.target.closest('button'); if(!b) return;
+  if(b.dataset.modo){ MODO = b.dataset.modo; if(!N.fechaISO) notaNueva(); guardarLocal(); render(); window.scrollTo({top:0}); return; }
+  if(b.dataset.nseg){ N[b.dataset.nseg] = b.dataset.v; guardarLocal(); render(); return; }
+  if(b.dataset.borranota){ borrarNota(b.dataset.borranota); return; }
+  if(b.id === 'bReintentar'){ reintentarNotas(); return; }
   if(b.id === 'bFoto'){ const i = document.getElementById('fotoIn'); if(i) i.click(); return; }
   if(b.dataset.foto !== undefined){ borrarFoto(Number(b.dataset.foto)); return; }
   if(b.dataset.seg){ set(b.dataset.seg, b.dataset.v); return; }
@@ -1060,9 +1327,13 @@ document.addEventListener('click', e=>{
   }
 });
 document.getElementById('bEnviar').onclick  = enviar;
+document.getElementById('bNota').onclick    = enviarNota;
 document.getElementById('bGuardar').onclick = ()=>guardarFicha(false);
 document.getElementById('bPrint').onclick   = ()=>window.print();
-document.getElementById('bNueva').onclick   = ()=>{ if(confirm('¿Empezar una ficha nueva en blanco?')) nueva(); };
+document.getElementById('bNueva').onclick   = ()=>{
+  if(MODO === 'seguimiento'){ notaNueva(); render(); toast('Apunte nuevo en blanco.'); return; }
+  if(confirm('¿Empezar una ficha nueva en blanco?')) nueva();
+};
 document.getElementById('bCsv').onclick     = ()=>{
   const todas = HIST.concat([F]);
   const n = descargarCsv(todas, 'zero-wattios-clientes-'+hoyISO()+'.csv');
