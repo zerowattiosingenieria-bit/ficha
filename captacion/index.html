@@ -1,0 +1,587 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ficha de Captación</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=Public+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --bg:#F4F6F4; --surface:#FFFFFF; --surface-2:#EDF1EE;
+  --text:#111B18; --muted:#5A6B64; --line:#D7E0DA;
+  --accent:#0E6B57; --accent-soft:#E3F0EB; --accent-ink:#FFFFFF;
+  --warn:#B06A0F; --warn-soft:#FBEEDA; --danger:#A3271E;
+  --shadow:0 1px 2px rgba(17,27,24,.06), 0 8px 24px -16px rgba(17,27,24,.35);
+  --r:10px;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0E1513; --surface:#161F1C; --surface-2:#1D2724;
+    --text:#E7EEEA; --muted:#95A69E; --line:#2A3733;
+    --accent:#4FBF9F; --accent-soft:#173029; --accent-ink:#08130F;
+    --warn:#E0A73F; --warn-soft:#2E2416; --danger:#E6796C;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 30px -18px rgba(0,0,0,.8);
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0E1513; --surface:#161F1C; --surface-2:#1D2724;
+  --text:#E7EEEA; --muted:#95A69E; --line:#2A3733;
+  --accent:#4FBF9F; --accent-soft:#173029; --accent-ink:#08130F;
+  --warn:#E0A73F; --warn-soft:#2E2416; --danger:#E6796C;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 30px -18px rgba(0,0,0,.8);
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--bg); color:var(--text);
+  font-family:"Public Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  font-size:16px; line-height:1.5; -webkit-text-size-adjust:100%;
+}
+.wrap{max-width:600px; margin:0 auto; padding:20px 16px 132px; display:flex; flex-direction:column; gap:18px}
+header{display:flex; flex-direction:column; gap:6px}
+.eyebrow{
+  font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:11px; letter-spacing:.14em;
+  text-transform:uppercase; color:var(--accent); font-weight:500;
+}
+h1{
+  font-family:"Archivo",system-ui,sans-serif; font-weight:800; font-size:30px; line-height:1.08;
+  margin:0; letter-spacing:-.02em; text-wrap:balance;
+}
+.lede{margin:0; color:var(--muted); font-size:14.5px; max-width:52ch}
+.contador{
+  margin:4px 0 0; align-self:flex-start; font-family:"IBM Plex Mono",monospace; font-size:11.5px;
+  letter-spacing:.04em; color:var(--accent); background:var(--accent-soft);
+  border:1px solid color-mix(in srgb,var(--accent) 25%, transparent);
+  border-radius:999px; padding:5px 11px;
+}
+.contador[hidden]{display:none}
+section{
+  background:var(--surface); border:1px solid var(--line); border-radius:var(--r);
+  box-shadow:var(--shadow); overflow:hidden;
+}
+.sec-head{
+  display:flex; align-items:baseline; gap:10px; padding:14px 16px 10px;
+  border-bottom:1px solid var(--line); background:var(--surface);
+}
+.step{
+  font-family:"IBM Plex Mono",monospace; font-size:11px; font-weight:500; color:var(--accent);
+  background:var(--accent-soft); border-radius:4px; padding:3px 6px; letter-spacing:.06em;
+}
+.sec-head h2{
+  font-family:"Archivo",system-ui,sans-serif; font-size:15.5px; font-weight:700; margin:0;
+  letter-spacing:-.01em;
+}
+.sec-head .hint{margin-left:auto; font-size:12px; color:var(--muted)}
+.body{padding:14px 16px 16px; display:grid; gap:13px}
+.row{display:grid; gap:13px}
+@media(min-width:460px){ .row.two{grid-template-columns:1fr 1fr} .row.three{grid-template-columns:1fr 1fr 1fr} }
+label{display:flex; flex-direction:column; gap:5px; font-size:13px; font-weight:600; color:var(--muted)}
+label span.opt{font-weight:400; text-transform:none}
+input,select,textarea{
+  font:inherit; font-size:16px; color:var(--text); background:var(--surface-2);
+  border:1px solid var(--line); border-radius:8px; padding:10px 11px; width:100%;
+  transition:border-color .12s ease, box-shadow .12s ease;
+}
+textarea{min-height:74px; resize:vertical; line-height:1.45}
+input:focus-visible,select:focus-visible,textarea:focus-visible,button:focus-visible,a:focus-visible,summary:focus-visible{
+  outline:2px solid var(--accent); outline-offset:2px; border-color:var(--accent);
+}
+select{appearance:none; background-image:linear-gradient(45deg,transparent 50%,currentColor 50%),linear-gradient(135deg,currentColor 50%,transparent 50%); background-position:calc(100% - 18px) 50%,calc(100% - 13px) 50%; background-size:5px 5px,5px 5px; background-repeat:no-repeat; padding-right:34px}
+.chips{display:flex; flex-wrap:wrap; gap:7px}
+.chip{position:relative}
+.chip input{position:absolute; opacity:0; width:1px; height:1px}
+.chip span{
+  display:inline-block; cursor:pointer; user-select:none;
+  border:1px solid var(--line); background:var(--surface-2); color:var(--muted);
+  border-radius:999px; padding:7px 13px; font-size:13.5px; font-weight:600;
+}
+.chip input:checked + span{background:var(--accent); border-color:var(--accent); color:var(--accent-ink)}
+.chip input:focus-visible + span{outline:2px solid var(--accent); outline-offset:2px}
+.field-inline{display:flex; gap:8px; align-items:flex-end}
+.field-inline > label{flex:1}
+button{
+  font:inherit; font-weight:600; font-size:14px; cursor:pointer;
+  border:1px solid var(--line); background:var(--surface-2); color:var(--text);
+  border-radius:8px; padding:10px 13px; white-space:nowrap;
+}
+button:hover{border-color:var(--accent); color:var(--accent)}
+button.primary{background:var(--accent); border-color:var(--accent); color:var(--accent-ink)}
+button.primary:hover{filter:brightness(1.06); color:var(--accent-ink)}
+button:disabled{opacity:.45; cursor:not-allowed}
+.range-wrap{display:flex; align-items:center; gap:12px}
+input[type=range]{padding:0; background:transparent; border:0; -webkit-appearance:none; height:26px}
+input[type=range]::-webkit-slider-runnable-track{height:6px; border-radius:99px; background:linear-gradient(90deg,var(--accent) var(--pct,50%),var(--line) var(--pct,50%))}
+input[type=range]::-moz-range-track{height:6px; border-radius:99px; background:linear-gradient(90deg,var(--accent) var(--pct,50%),var(--line) var(--pct,50%))}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none; width:22px; height:22px; margin-top:-8px; border-radius:50%; background:var(--surface); border:2px solid var(--accent); box-shadow:var(--shadow)}
+input[type=range]::-moz-range-thumb{width:20px; height:20px; border-radius:50%; background:var(--surface); border:2px solid var(--accent)}
+.score{
+  font-family:"Archivo",system-ui,sans-serif; font-weight:800; font-size:26px; min-width:2.6ch;
+  text-align:center; font-variant-numeric:tabular-nums; letter-spacing:-.02em;
+}
+.score small{display:block; font-family:"IBM Plex Mono",monospace; font-size:9.5px; font-weight:400; letter-spacing:.1em; color:var(--muted)}
+.out{background:var(--surface); border:1px solid var(--line); border-radius:var(--r); box-shadow:var(--shadow)}
+.out .body{gap:10px}
+pre{
+  font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:12.5px; line-height:1.62;
+  background:var(--surface-2); border:1px solid var(--line); border-radius:8px;
+  padding:12px; margin:0; white-space:pre-wrap; word-break:break-word; color:var(--text);
+}
+.out-label{
+  font-family:"IBM Plex Mono",monospace; font-size:10.5px; letter-spacing:.12em; text-transform:uppercase;
+  color:var(--muted); display:flex; align-items:center; gap:8px;
+}
+.out-label::after{content:""; flex:1; height:1px; background:var(--line)}
+.missing{
+  display:flex; flex-wrap:wrap; gap:6px; align-items:center; font-size:12.5px; color:var(--warn);
+  background:var(--warn-soft); border:1px solid color-mix(in srgb,var(--warn) 35%, transparent);
+  border-radius:8px; padding:9px 11px;
+}
+.missing[hidden]{display:none}
+.actions{display:flex; flex-wrap:wrap; gap:8px}
+.actions .link{
+  display:inline-flex; align-items:center; text-decoration:none; font-weight:600; font-size:14px;
+  border:1px solid var(--line); border-radius:8px; padding:10px 13px; color:var(--text); background:var(--surface-2);
+}
+.actions .link:hover{border-color:var(--accent); color:var(--accent)}
+.actions .link[aria-disabled="true"]{opacity:.45; pointer-events:none}
+.bar{
+  position:fixed; left:0; right:0; bottom:0; z-index:5;
+  background:color-mix(in srgb,var(--surface) 92%, transparent);
+  backdrop-filter:blur(8px); border-top:1px solid var(--line);
+  padding:10px 16px calc(10px + env(safe-area-inset-bottom));
+}
+.bar-inner{max-width:600px; margin:0 auto; display:flex; gap:8px}
+.bar button{flex:1}
+details{background:var(--surface); border:1px solid var(--line); border-radius:var(--r)}
+summary{cursor:pointer; padding:12px 16px; font-weight:600; font-size:14px; list-style:none}
+summary::-webkit-details-marker{display:none}
+summary::before{content:"▸ "; color:var(--accent)}
+details[open] summary::before{content:"▾ "}
+details .body{padding-top:2px}
+.note{font-size:12.5px; color:var(--muted); margin:0}
+footer{text-align:center; font-size:12px; color:var(--muted); font-family:"IBM Plex Mono",monospace; letter-spacing:.04em}
+.toast{
+  position:fixed; left:50%; transform:translateX(-50%) translateY(12px); bottom:86px; z-index:9;
+  background:var(--text); color:var(--bg); padding:9px 16px; border-radius:99px; font-size:13.5px; font-weight:600;
+  opacity:0; pointer-events:none; transition:opacity .18s ease, transform .18s ease;
+}
+.toast.show{opacity:1; transform:translateX(-50%) translateY(0)}
+@media(prefers-reduced-motion:reduce){*{transition:none !important; animation:none !important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <p class="eyebrow">Zero Wattios · Captación puerta fría</p>
+    <h1>Ficha de captación</h1>
+    <p class="lede">Rellénala en la puerta. Al terminar, el botón de guardar crea la tarjeta en Trello y registra la ficha en la hoja de seguimiento con la hora exacta.</p>
+    <p class="contador" id="contador"></p>
+  </header>
+
+  <section>
+    <div class="sec-head"><span class="step">01</span><h2>La cita</h2><span class="hint">quién y cuándo</span></div>
+    <div class="body">
+      <div class="row two">
+        <label>Captador/a
+          <input id="captador" list="captadores" placeholder="Sandra" autocomplete="off">
+          <datalist id="captadores"></datalist>
+        </label>
+        <label>Comercial asignado <span class="opt">(opcional)</span>
+          <input id="comercial" placeholder="Sin asignar" autocomplete="off">
+        </label>
+      </div>
+      <div class="row two">
+        <label>Fecha de la visita <input type="date" id="fecha"></label>
+        <label>Hora <input type="time" id="hora" value="16:00"></label>
+      </div>
+      <label>Estado de la cita
+        <div class="chips" id="estado-chips">
+          <label class="chip"><input type="radio" name="estado" value="CONFIRMADA" checked><span>Confirmada</span></label>
+          <label class="chip"><input type="radio" name="estado" value="PENDIENTE"><span>Pendiente</span></label>
+          <label class="chip"><input type="radio" name="estado" value="A RECONTACTAR"><span>A recontactar</span></label>
+          <label class="chip"><input type="radio" name="estado" value="NO INTERESA"><span>No interesa</span></label>
+        </div>
+      </label>
+      <label>Tecnología de interés
+        <div class="chips">
+          <label class="chip"><input type="radio" name="tec" value="AEROTERMIA" checked><span>Aerotermia</span></label>
+          <label class="chip"><input type="radio" name="tec" value="FOTOVOLTAICA"><span>Fotovoltaica</span></label>
+          <label class="chip"><input type="radio" name="tec" value="AEROTERMIA + FOTOVOLTAICA"><span>Las dos</span></label>
+        </div>
+      </label>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="step">02</span><h2>Quién vive aquí</h2><span class="hint">contacto</span></div>
+    <div class="body">
+      <label>Propietarios <input id="propietarios" placeholder="Rafael" autocomplete="off"></label>
+      <div class="row two">
+        <label>Teléfono <input type="tel" id="telefono" inputmode="tel" placeholder="620501761"></label>
+        <label>Correo <span class="opt">(opcional)</span> <input type="email" id="correo" inputmode="email" placeholder="//"></label>
+      </div>
+      <div class="row two">
+        <label>Edad aproximada <input id="edad" inputmode="numeric" placeholder="55-65"></label>
+        <label>Nº de personas en casa <input id="personas" inputmode="numeric" placeholder="4"></label>
+      </div>
+      <label>¿Están los dos decisores en la visita?
+        <div class="chips">
+          <label class="chip"><input type="radio" name="decisores" value="Sí" checked><span>Sí</span></label>
+          <label class="chip"><input type="radio" name="decisores" value="No"><span>No</span></label>
+          <label class="chip"><input type="radio" name="decisores" value="Decisor único"><span>Decisor único</span></label>
+        </div>
+      </label>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="step">03</span><h2>La vivienda</h2><span class="hint">dónde y cómo es</span></div>
+    <div class="body">
+      <label>Dirección <input id="direccion" placeholder="C. De la capilla, 14. La Navata" autocomplete="off"></label>
+      <div class="row two">
+        <label>Municipio / zona <input id="municipio" placeholder="Galapagar" autocomplete="off"></label>
+        <label>Superficie aprox. (m²) <input id="m2" inputmode="numeric" placeholder="220"></label>
+      </div>
+      <div class="field-inline">
+        <label>Coordenadas Google Maps <input id="coords" placeholder="40.593001,-3.983762" autocomplete="off"></label>
+        <button type="button" id="gps">Usar GPS</button>
+      </div>
+      <label>Tipo de vivienda
+        <select id="tipo">
+          <option>Unifamiliar aislada</option><option>Adosado</option><option>Pareado</option>
+          <option>Piso</option><option>Chalet con piscina</option><option>Otro</option>
+        </select>
+      </label>
+      <div class="row two">
+        <label>Régimen
+          <select id="regimen"><option>Propietario</option><option>Inquilino</option><option>En venta</option></select>
+        </label>
+        <label>¿Ya tiene fotovoltaica?
+          <select id="yafv"><option>No</option><option>Sí, quiere ampliar</option><option>Sí, completa</option></select>
+        </label>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="step">04</span><h2>Radiografía de gastos</h2><span class="hint">el dato que vende</span></div>
+    <div class="body">
+      <label>Sistema de calefacción actual
+        <select id="calefaccion">
+          <option>Gasóleo</option><option>Gas natural</option><option>Propano / butano</option>
+          <option>Eléctrica</option><option>Biomasa / pellet</option><option>Bomba de calor</option><option>Sin calefacción</option>
+        </select>
+      </label>
+      <div class="row two">
+        <label>Gasto en combustible (€) <input id="gasto_gas" inputmode="numeric" placeholder="2500"></label>
+        <label>Periodicidad
+          <select id="periodo_gas"><option>al año</option><option>al mes</option><option>por depósito</option></select>
+        </label>
+      </div>
+      <div class="row two">
+        <label>Gasto de luz (€/mes) <input id="gasto_luz" inputmode="numeric" placeholder="70"></label>
+        <label>Comercializadora <span class="opt">(opcional)</span> <input id="comercializadora" placeholder="Iberdrola" autocomplete="off"></label>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="step">05</span><h2>Lectura del captador</h2><span class="hint">para el comercial</span></div>
+    <div class="body">
+      <label>Nivel de interés
+        <div class="range-wrap">
+          <input type="range" id="interes" min="1" max="10" step="1" value="7">
+          <div class="score"><span id="interes-val">7</span><small>de 10</small></div>
+        </div>
+      </label>
+      <label>Perfil del cliente <span class="opt">(cómo tratarlo)</span>
+        <textarea id="perfil" placeholder="Es perfil cotilla sabelotodo. Pide números concretos desde el minuto uno."></textarea>
+      </label>
+      <label>Otros <span class="opt">(objeciones, obras previstas, horarios…)</span>
+        <textarea id="otros" placeholder="Va a cambiar ventanas este otoño. No quiere obra en el salón."></textarea>
+      </label>
+      <p class="note">Recuerda: foto de la fachada al WhatsApp junto con la dirección, y adjúntala a la tarjeta de Trello.</p>
+    </div>
+  </section>
+
+  <section class="out">
+    <div class="sec-head"><span class="step">06</span><h2>Tarjeta lista</h2><span class="hint">copiar y pegar</span></div>
+    <div class="body">
+      <div class="missing" id="missing" hidden></div>
+      <p class="out-label">Título de la tarjeta</p>
+      <pre id="out-titulo"></pre>
+      <div class="actions"><button type="button" data-copy="out-titulo">Copiar título</button></div>
+      <p class="out-label">Descripción</p>
+      <pre id="out-desc"></pre>
+      <div class="actions">
+        <button type="button" data-copy="out-desc">Copiar descripción</button>
+        <button type="button" data-copy="out-todo">Copiar todo</button>
+      </div>
+      <p class="out-label">Guardar y avisar</p>
+      <div class="actions">
+        <a class="link" id="link-trello" href="#" target="_blank" rel="noopener">Abrir Trello</a>
+        <a class="link" id="link-wa" href="#" target="_blank" rel="noopener">Avisar por WhatsApp</a>
+        <a class="link" id="link-sheet" href="#" target="_blank" rel="noopener">Guardar ficha (hoja + Trello)</a>
+        <a class="link" id="link-maps" href="#" target="_blank" rel="noopener">Ver en Maps</a>
+      </div>
+      <pre id="out-todo" hidden></pre>
+    </div>
+  </section>
+
+  <details>
+    <summary>Ajustes del equipo</summary>
+    <div class="body">
+      <label>Captadores <span class="opt">(separados por comas)</span>
+        <input id="cfg-captadores" placeholder="Sandra, Marta, Jorge">
+      </label>
+      <label>URL del tablero de Trello
+        <input id="cfg-trello" placeholder="https://trello.com/b/XXXXXXXX/captacion-zero-wattios">
+      </label>
+      <label>Teléfono del WhatsApp del equipo <span class="opt">(con prefijo, sin +)</span>
+        <input id="cfg-wa" inputmode="tel" placeholder="34614883551">
+      </label>
+      <label>URL del Web App de la hoja <span class="opt">(Apps Script)</span>
+        <input id="cfg-sheet" placeholder="https://script.google.com/macros/s/XXXX/exec">
+      </label>
+      <p class="note">Se guardan solo en este móvil. Cada captador los pone una vez.</p>
+    </div>
+  </details>
+
+  <footer>ZERO WATTIOS INGENIERÍA · v1</footer>
+</div>
+
+<div class="bar"><div class="bar-inner">
+  <button type="button" id="nueva">Nueva ficha</button>
+  <button type="button" class="primary" data-copy="out-todo">Copiar ficha completa</button>
+</div></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(function(){
+  var $ = function(id){ return document.getElementById(id); };
+  var val = function(id){ var e=$(id); return e ? e.value.trim() : ''; };
+  var radio = function(name){ var e=document.querySelector('input[name="'+name+'"]:checked'); return e ? e.value : ''; };
+
+  var CFG = ['cfg-captadores','cfg-trello','cfg-wa','cfg-sheet'];
+  var DEF = {
+    'cfg-captadores': 'Sandra',
+    'cfg-trello': 'https://trello.com/b/e70slO3R',
+    'cfg-wa': '',
+    'cfg-sheet': 'https://script.google.com/macros/s/AKfycbzpKf8rilU2cbbn3izu9-k25NayxK13JW7ggpMT7Rndv9Asok32y979zHL9ltqestRu/exec'
+  };
+  var FIELDS = ['captador','comercial','fecha','hora','propietarios','telefono','correo','edad','personas',
+                'direccion','municipio','m2','coords','tipo','regimen','yafv','calefaccion','gasto_gas',
+                'periodo_gas','gasto_luz','comercializadora','interes','perfil','otros'];
+
+  function store(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
+  function load(k){ try{ return localStorage.getItem(k)||''; }catch(e){ return ''; } }
+
+  CFG.forEach(function(id){
+    var v = load(id) || DEF[id] || ''; if(v) $(id).value = v;
+    $(id).addEventListener('input', function(){ store(id, $(id).value.trim()); refreshCaptadores(); render(); });
+  });
+
+  function refreshCaptadores(){
+    var list = val('cfg-captadores').split(',').map(function(s){return s.trim();}).filter(Boolean);
+    var dl = $('captadores'); dl.innerHTML = '';
+    list.forEach(function(n){ var o=document.createElement('option'); o.value=n; dl.appendChild(o); });
+  }
+  refreshCaptadores();
+
+  if(!val('fecha')){ $('fecha').value = new Date().toISOString().slice(0,10); }
+
+  function fechaCorta(){
+    var f = val('fecha'); if(!f) return '';
+    var p = f.split('-'); return p[2]+'/'+p[1]+'/'+p[0];
+  }
+  function gastoGas(){
+    var g = val('gasto_gas'); if(!g) return '';
+    return g + '€ ' + val('periodo_gas') + ' de ' + val('calefaccion').toLowerCase();
+  }
+  function gastoLuz(){ var l = val('gasto_luz'); return l ? l + '€ al mes' : ''; }
+
+  function titulo(){
+    var t = [];
+    if(val('hora')) t.push(val('hora'));
+    if(val('direccion')) t.push(val('direccion') + (val('municipio') ? '. ' + val('municipio') : '') + '.');
+    var nota = [];
+    if(val('captador')) nota.push(val('captador'));
+    var cons = [];
+    if(val('gasto_gas')) cons.push(val('gasto_gas') + ' ' + val('calefaccion').toLowerCase());
+    if(val('gasto_luz')) cons.push(val('gasto_luz') + '€ mes luz');
+    if(cons.length) nota.push('consumo ' + cons.join(' y '));
+    var s = t.join(' ');
+    if(nota.length) s += ' ' + nota.join(' ') + '.';
+    if(val('perfil')) s += ' ' + val('perfil');
+    return s.trim();
+  }
+
+  function desc(){
+    var L = [];
+    L.push('🟢 Propietarios : ' + val('propietarios'));
+    L.push('Teléfono: ' + val('telefono'));
+    L.push('Correo: ' + (val('correo') || '//'));
+    L.push('Gasto Gas: ' + gastoGas());
+    L.push('Gasto luz : ' + gastoLuz());
+    L.push('Dirección: ' + val('direccion') + (val('municipio') ? '. ' + val('municipio') : ''));
+    L.push('Dirección Google Maps: ' + val('coords'));
+    L.push('Edad Aproximada: ' + val('edad'));
+    L.push('Nivel de Interés (1 a 10): ' + val('interes'));
+    L.push('');
+    L.push('— Vivienda —');
+    L.push('Tipo: ' + val('tipo') + ' · ' + val('regimen') + ' · ' + (val('m2') ? val('m2') + ' m²' : 'm² s/d'));
+    L.push('Personas en casa: ' + val('personas'));
+    L.push('Calefacción actual: ' + val('calefaccion'));
+    L.push('Fotovoltaica existente: ' + val('yafv'));
+    L.push('Comercializadora: ' + (val('comercializadora') || 's/d'));
+    L.push('');
+    L.push('— Captación —');
+    L.push('Captador/a: ' + val('captador'));
+    L.push('Comercial: ' + (val('comercial') || 'Sin asignar'));
+    L.push('Visita: ' + fechaCorta() + ' a las ' + val('hora') + ' · ' + radio('estado'));
+    L.push('Tecnología: ' + radio('tec'));
+    L.push('Decisores presentes: ' + radio('decisores'));
+    L.push('Otros: ' + val('otros'));
+    return L.join('\n');
+  }
+
+  function faltan(){
+    var req = {direccion:'dirección', telefono:'teléfono', captador:'captador', hora:'hora', fecha:'fecha'};
+    var out = [];
+    for(var k in req){ if(!val(k)) out.push(req[k]); }
+    if(!val('gasto_luz') && !val('gasto_gas')) out.push('algún consumo');
+    return out;
+  }
+
+  function sheetUrl(){
+    var base = val('cfg-sheet'); if(!base) return '';
+    var p = {
+      fecha: val('fecha'), hora: val('hora'), estado: radio('estado'), tecnologia: radio('tec'),
+      captador: val('captador'), comercial: val('comercial'), propietarios: val('propietarios'),
+      telefono: val('telefono'), correo: val('correo'), edad: val('edad'), personas: val('personas'),
+      decisores: radio('decisores'), direccion: val('direccion'), municipio: val('municipio'),
+      coords: val('coords'), tipo: val('tipo'), regimen: val('regimen'), m2: val('m2'),
+      calefaccion: val('calefaccion'), gasto_gas: val('gasto_gas'), periodo_gas: val('periodo_gas'),
+      gasto_luz: val('gasto_luz'), comercializadora: val('comercializadora'), yafv: val('yafv'),
+      interes: val('interes'), perfil: val('perfil'), otros: val('otros'), titulo: titulo()
+    };
+    var q = [];
+    for(var k in p){ q.push(encodeURIComponent(k)+'='+encodeURIComponent(p[k])); }
+    return base + (base.indexOf('?')>-1 ? '&' : '?') + q.join('&');
+  }
+
+  function render(){
+    var t = titulo(), d = desc();
+    $('out-titulo').textContent = t || '—';
+    $('out-desc').textContent = d;
+    $('out-todo').textContent = t + '\n\n' + d;
+
+    var f = faltan(), box = $('missing');
+    if(f.length){ box.hidden = false; box.textContent = 'Falta por rellenar: ' + f.join(', ') + '.'; }
+    else { box.hidden = true; }
+
+    var pct = ((parseInt(val('interes'),10) - 1) / 9) * 100;
+    $('interes').style.setProperty('--pct', pct + '%');
+    $('interes-val').textContent = val('interes');
+
+    var tr = val('cfg-trello');
+    setLink('link-trello', tr || '');
+    var wa = val('cfg-wa');
+    var texto = encodeURIComponent(t + '\n\n' + d);
+    setLink('link-wa', 'https://wa.me/' + wa.replace(/\D/g,'') + '?text=' + texto);
+    setLink('link-sheet', sheetUrl());
+    var c = val('coords');
+    setLink('link-maps', c ? 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(c)
+                           : (val('direccion') ? 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(val('direccion')+' '+val('municipio')) : ''));
+  }
+
+  function setLink(id, href){
+    var a = $(id);
+    if(href){ a.href = href; a.removeAttribute('aria-disabled'); }
+    else { a.href = '#'; a.setAttribute('aria-disabled','true'); }
+  }
+
+  FIELDS.forEach(function(id){ var e=$(id); if(e){ e.addEventListener('input', render); e.addEventListener('change', render); } });
+  document.querySelectorAll('input[type=radio]').forEach(function(r){ r.addEventListener('change', render); });
+
+  var toastT;
+  function toast(msg){
+    var el = $('toast'); el.textContent = msg; el.classList.add('show');
+    clearTimeout(toastT); toastT = setTimeout(function(){ el.classList.remove('show'); }, 1800);
+  }
+
+  function copiar(txt, label){
+    if(navigator.clipboard && window.isSecureContext){
+      navigator.clipboard.writeText(txt).then(function(){ toast(label + ' copiado'); },
+                                             function(){ fallback(txt, label); });
+    } else { fallback(txt, label); }
+  }
+  function fallback(txt, label){
+    var ta = document.createElement('textarea');
+    ta.value = txt; ta.style.position='fixed'; ta.style.opacity='0';
+    document.body.appendChild(ta); ta.select();
+    try{ document.execCommand('copy'); toast(label + ' copiado'); }
+    catch(e){ toast('Copia manual: selecciona el texto'); }
+    document.body.removeChild(ta);
+  }
+
+  document.querySelectorAll('[data-copy]').forEach(function(b){
+    b.addEventListener('click', function(){
+      var id = b.getAttribute('data-copy');
+      var label = id === 'out-titulo' ? 'Título' : (id === 'out-desc' ? 'Descripción' : 'Ficha');
+      copiar($(id).textContent, label);
+    });
+  });
+
+  function hoyClave(){ return 'fichas-' + new Date().toISOString().slice(0,10); }
+  function pintarContador(){
+    var raw = load(hoyClave()), el = $('contador');
+    if(!raw){ el.hidden = true; return; }
+    var d = raw.split('|');
+    el.hidden = false;
+    el.textContent = 'Hoy llevas ' + d[0] + (d[0] === '1' ? ' ficha' : ' fichas') + ' · última a las ' + d[1];
+  }
+  $('link-sheet').addEventListener('click', function(){
+    if($('link-sheet').getAttribute('aria-disabled')) return;
+    var raw = load(hoyClave()), n = raw ? parseInt(raw.split('|')[0], 10) : 0;
+    var h = new Date().toTimeString().slice(0,5);
+    store(hoyClave(), (n + 1) + '|' + h);
+    pintarContador();
+  });
+  pintarContador();
+
+  $('gps').addEventListener('click', function(){
+    if(!navigator.geolocation){ toast('Este móvil no da GPS'); return; }
+    $('gps').textContent = 'Buscando…'; $('gps').disabled = true;
+    navigator.geolocation.getCurrentPosition(function(pos){
+      $('coords').value = pos.coords.latitude.toFixed(6) + ',' + pos.coords.longitude.toFixed(6);
+      $('gps').textContent = 'Usar GPS'; $('gps').disabled = false; render(); toast('Coordenadas puestas');
+    }, function(){
+      $('gps').textContent = 'Usar GPS'; $('gps').disabled = false; toast('No se pudo leer el GPS');
+    }, {enableHighAccuracy:true, timeout:10000});
+  });
+
+  $('nueva').addEventListener('click', function(){
+    var cap = val('captador');
+    FIELDS.forEach(function(id){
+      var e = $(id); if(!e) return;
+      if(id === 'interes'){ e.value = 7; }
+      else if(id === 'fecha'){ e.value = new Date().toISOString().slice(0,10); }
+      else if(id === 'hora'){ e.value = '16:00'; }
+      else if(e.tagName === 'SELECT'){ e.selectedIndex = 0; }
+      else { e.value = ''; }
+    });
+    $('captador').value = cap;
+    document.querySelector('input[name="estado"][value="CONFIRMADA"]').checked = true;
+    document.querySelector('input[name="tec"][value="AEROTERMIA"]').checked = true;
+    document.querySelector('input[name="decisores"][value="Sí"]').checked = true;
+    render(); window.scrollTo({top:0, behavior:'smooth'}); toast('Ficha en blanco');
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>
