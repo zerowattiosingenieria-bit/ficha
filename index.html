@@ -282,16 +282,18 @@ function calc(f){
   const muniTxt   = munNombre(f);
   const ibiMun    = IBI[muniTxt] || IBI['Otro / a confirmar'];
   const ibiTotal  = Math.round(f.ibiAnual * ibiMun.pct/100 * ibiMun.anios);
+  /* El CAE NO se descuenta de la factura: es dinero que cobra el cliente, como el IRPF
+     y el IBI. La factura es la inversión completa; el CAE va del lado de las ayudas. */
   const ayudas    = deduccion + ibiTotal + f.cae;
-  const facturado = Math.max(0, inversion - f.cae);
-  const costeReal = Math.max(0, facturado - deduccion - ibiTotal);
+  const facturado = inversion;
+  const costeReal = Math.max(0, facturado - deduccion - ibiTotal - f.cae);
   const retorno   = ahorro > 0 ? costeReal / ahorro : 0;
 
   /* ----- financiación -----
      El importe financiado de cada tecnología sale del precio, menos el CAE (que se
      descuenta en la factura de la aerotermia) y menos la parte proporcional de la
      reserva. La cuota es ese importe por el coeficiente del plazo. */
-  const finBaseAero = conAero ? Math.max(0, f.precioAero - f.cae) : 0;
+  const finBaseAero = conAero ? (Number(f.precioAero) || 0) : 0;
   const finBaseFV   = conFV   ? f.precioFV : 0;
   const finBaseTot  = finBaseAero + finBaseFV;
   const resAero  = finBaseTot > 0 ? f.reserva * finBaseAero / finBaseTot : 0;
@@ -620,9 +622,8 @@ function render(){
   }
   if(r.inversion>0){
     h += '<div class="card">'+
-      kv('Inversión llave en mano', eur(r.inversion))+
-      kv('− CAE (ya en factura)', '− '+eur(f.cae))+
-      kv('Precio de factura', eur(r.facturado))+
+      kv('Inversión llave en mano (precio de factura)', eur(r.inversion))+
+      kv('− CAE (lo cobra el cliente)', '− '+eur(f.cae))+
       kv('− Deducción IRPF ('+r.tramo.pct+'% sobre '+eur(r.baseIrpf)+')', '− '+eur(r.deduccion))+
       kv('− Bonificación IBI ('+r.ibiMun.pct+'% × '+r.ibiMun.anios+' años)', '− '+eur(r.ibiTotal))+
       kv('Coste real tras ayudas', eur(r.costeReal),'tot')+
@@ -732,7 +733,7 @@ function render(){
   h += '<h2>7 · Oferta y financiación</h2>';
   if(r.conAero) h += num('precioAero','Precio aerotermia (IVA inc.)',250,0,60000,'€');
   if(r.conFV)   h += num('precioFV','Precio fotovoltaica (IVA inc.)',250,0,60000,'€');
-  h += num('cae','CAE a descontar en factura',100,0,6000,'€','Orden habitual: 600–2.500 €. Solo si se sustituye una <b>caldera de combustión</b>. No aplica a obra nueva ni a sustituir calefacción eléctrica.');
+  h += num('cae','CAE estimado',100,0,6000,'€','<b>Lo estimas tú</b>, entre 0 y 6.000 €. Es dinero que <b>cobra el cliente</b>, no la empresa: no se descuenta de la factura, va como ahorro. Solo aplica si se sustituye una <b>caldera de combustión</b>: no en obra nueva ni sustituyendo calefacción eléctrica. Hasta que no se emite el certificado es una estimación, así que dilo como tal.');
   h += seg('tramoIrpf','Tramo de deducción IRPF',
         [['60','60%'],['40','40%'],['20','20%'],['0','Ninguno']],
         r.tramo.txt+'.<br>Base máxima '+eur(BASE_IRPF)+' por tecnología'+
