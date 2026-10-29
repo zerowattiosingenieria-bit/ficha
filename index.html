@@ -417,7 +417,7 @@ function calc(f){
   /* ----- economía ----- */
   const factor   = f.factorSust > 0 ? f.factorSust/100 : FACTOR[f.caldera];
   const luzAnio  = f.gastoLuzMes * 12;
-  const combAnio = f.gastoCombAnio;
+  const combAnio = conAero ? f.gastoCombAnio : 0;   // con solo FV el combustible no cuenta
   const actual   = luzAnio + combAnio;
 
   const termFut  = conAero ? combAnio * factor : combAnio;
@@ -457,9 +457,10 @@ function calc(f){
   const ibiTotal  = Math.round(ibiTopado * ibiMun.anios);
   /* El CAE NO se descuenta de la factura: es dinero que cobra el cliente, como el IRPF
      y el IBI. La factura es la inversión completa; el CAE va del lado de las ayudas. */
-  const ayudas    = deduccion + ibiTotal + f.cae;
+  const cae       = conAero ? f.cae : 0;           // el CAE va con la aerotermia
+  const ayudas    = deduccion + ibiTotal + cae;
   const facturado = inversion;
-  const costeReal = Math.max(0, facturado - deduccion - ibiTotal - f.cae);
+  const costeReal = Math.max(0, facturado - deduccion - ibiTotal - cae);
   const retorno   = ahorro > 0 ? costeReal / ahorro : 0;
 
   /* ----- financiación -----
@@ -491,7 +492,7 @@ function calc(f){
   const intereses    = Math.max(0, totalPagado - facturado);
 
   return {kw,cascada,unidades,demanda,acs,acsCat,acumulador,modelo,gama,tanque,separador,
-    tejadoTxt,conAero,conFV,factor,luzAnio,combAnio,actual,futuro,ahorro,ahorroMes,
+    tejadoTxt,conAero,conFV,cae,factor,luzAnio,combAnio,actual,futuro,ahorro,ahorroMes,
     inversion,tramo,baseIrpf,baseAeroIrpf,baseFVIrpf,deduccion,muniTxt,ibiMun,ibiTotal,ayudas,
     facturado,costeReal,retorno,
     conBat,conCar,modulosBat,kwhBat,precioAero,precioFV,precioBat,precioCar,precioBatSug,
@@ -509,7 +510,7 @@ function avisos(){
   if(!r.conAero && !r.conFV) a.push(E('La ficha no tiene marcada ni aerotermia ni fotovoltaica: activa al menos una.'));
   if(!f.cliente) a.push(E('Falta el nombre del cliente.'));
   if(!f.email) a.push(E('Falta el email: sin él el motor no puede enviar la propuesta.'));
-  if(!f.gastoCombAnio && !f.gastoLuzMes) a.push(E('Sin gastos actuales no se puede calcular el ahorro. Pide la factura antes de salir de la casa.'));
+  if(!(r.conAero && f.gastoCombAnio) && !f.gastoLuzMes) a.push(E('Sin gastos actuales no se puede calcular el ahorro. Pide la factura antes de salir de la casa.'));
   const mun = r.ibiMun;
   if(!f.ibiAnual && mun.pct) a.push(W('Falta el IBI anual: sin él no se puede cuantificar la bonificación de '+mun.pct+'% durante '+mun.anios+' años.'));
   if(f.municipio==='Otro / a confirmar' && !String(f.municipioOtro||'').trim()) a.push(E('Has marcado «Otro»: escribe el nombre del municipio en el campo de debajo.'));
@@ -533,7 +534,7 @@ function avisos(){
   if(r.conBat && !r.modulosBat) a.push(W('Batería marcada como sí pero sin módulos: pon cuántos lleva y completa el modelo antes de cerrar la ficha.'));
 
   if(r.conAero && f.caldera==='gas') a.push(W('Cliente de gas natural: el ahorro es más moderado y el coste 0 puede no salir. Argumenta confort, refrigeración y letra energética, y NO prometas coste 0 sin comprobar el número.'));
-  if(f.caldera==='gasoil'||f.caldera==='glp') a.push(OK('Cliente de '+(f.caldera==='gasoil'?'gasóleo':'propano')+': es el mejor caso de amortización. Retorno típico de 4 a 6 años.'));
+  if(r.conAero && (f.caldera==='gasoil'||f.caldera==='glp')) a.push(OK('Cliente de '+(f.caldera==='gasoil'?'gasóleo':'propano')+': es el mejor caso de amortización. Retorno típico de 4 a 6 años.'));
   if(r.cuota>0 && r.coste0) a.push(OK('COSTE 0: la cuota de '+eur2(r.cuota)+'/mes cabe dentro del ahorro de '+eur2(r.ahorroMes)+'/mes. Se puede plantear así.'));
   if(!r.auto) a.push(W('Las cuotas están puestas <b>a mano</b>, no salen de la tabla de financiación. Comprueba que son las que da la financiera antes de firmar.'));
   if(r.coef===0) a.push(E('El plazo de '+f.mensualidades+' meses no está en la tabla de coeficientes: la cuota no se puede calcular. Elige uno de los plazos de la lista.'));
@@ -607,7 +608,7 @@ function filas(f){
     ['Batería (kWh)', f.bateriaKwh],
     ['Modelo de batería', f.bateriaModelo],
     ['Gasto luz (€/mes)', f.gastoLuzMes],
-    ['Gasto combustible (€/año)', f.gastoCombAnio],
+    ['Gasto combustible (€/año)', r.conAero ? f.gastoCombAnio : 0],
     ['Gasto energético actual (€/año)', Math.round(r.actual)],
     ['Gasto energético previsto (€/año)', Math.round(r.futuro)],
     ['Ahorro anual (€)', Math.round(r.ahorro)],
@@ -619,7 +620,7 @@ function filas(f){
     ['Precio batería (€)', r.precioBat],
     ['Precio cargador (€)', r.precioCar],
     ['Inversión total (€)', r.inversion],
-    ['CAE (€)', f.cae],
+    ['CAE (€)', r.cae],
     ['Tramo IRPF', r.tramo.txt],
     ['Base de deducción IRPF (€)', r.baseIrpf],
     ['Deducción IRPF (€)', r.deduccion],
@@ -885,6 +886,8 @@ function toast(txt){
 function set(k,v){
   if(k==='mensualidades') v = Number(v) || 120;
   F[k]=v;
+  /* «¿Qué se ofrece?» decide aerotermia y fotovoltaica (orden de Nando, 29/10/2026). */
+  if(k==='ofrece'){ F.aero = v==='fv' ? 'no' : 'si'; F.pv = v==='aero' ? 'no' : 'si'; }
   if(k==='bateria' && v==='no'){ F.bateriaModulos=0; F.bateriaKwh=0; F.bateriaModelo=''; F.precioBateria=0; F.cuotaBateria=0; }
   if(k==='cargador' && v==='no'){ F.precioCargador=0; F.cuotaCargador=0; }
   guardarLocal(); render();
@@ -1111,7 +1114,7 @@ function renderFicha(){
        '<div class="big">'+(r.conAero ? r.modelo : (r.conFV ? f.placas+' placas fotovoltaicas' : 'Sin equipos marcados'))+'</div>'+
        '<div class="nota">'+(r.conAero
           ? 'R290 · hasta 75 °C · '+(f.suministro==='tri'?'trifásica 400 V':'monofásica 230 V')+' · carga estimada '+r.demanda.toFixed(1).replace('.',',')+' kW'
-          : 'Marca aerotermia y/o fotovoltaica arriba')+'</div>'+
+          : 'Elige arriba qué se ofrece')+'</div>'+
        '<div class="tags">'+
          (r.conAero?'<span class="tag">'+r.kw+' kW</span><span class="tag">'+r.acumulador+'</span><span class="tag">'+(f.refrig==='si'?'Frío + calor':'Solo calor')+'</span>':'')+
          (r.conFV?'<span class="tag">FV '+f.placas+' placas</span><span class="tag">'+(r.conBat?'Batería '+String(r.kwhBat).replace('.',',')+' kWh':'Sin batería')+'</span>':'')+
@@ -1129,7 +1132,7 @@ function renderFicha(){
   if(r.inversion>0){
     h += '<div class="card">'+
       kv('Inversión llave en mano (precio de factura)', eur(r.inversion))+
-      kv('− CAE (lo cobra el cliente)', '− '+eur(f.cae))+
+      (r.conAero?kv('− CAE (lo cobra el cliente)', '− '+eur(r.cae)):'')+
       kv('− Deducción IRPF ('+r.tramo.pct+'% sobre '+eur(r.baseIrpf)+')', '− '+eur(r.deduccion))+
       kv('− Bonificación IBI ('+r.ibiMun.pct+'% × '+r.ibiMun.anios+' años'+(r.ibiMun.tope?', tope '+r.ibiMun.tope+' €/año':'')+')', '− '+eur(r.ibiTotal))+
       kv('Coste real tras ayudas', eur(r.costeReal),'tot')+
@@ -1149,6 +1152,12 @@ function renderFicha(){
   /* AVISOS */
   const av = avisos();
   if(av.length){ h += '<h2>Avisos</h2>' + av.map(a=>'<div class="msg '+a.t+'">'+a.x+'</div>').join(''); }
+
+  /* QUÉ SE OFRECE: manda sobre lo que se ve. Fichas antiguas: sale de lo marcado. */
+  F.ofrece = F.aero==='si' && F.pv!=='si' ? 'aero' : (F.pv==='si' && F.aero!=='si' ? 'fv' : 'ambas');
+  h += '<h2>¿Qué se ofrece?</h2>';
+  h += seg('ofrece','Se ofrece',[['ambas','Las dos'],['aero','Solo aerotermia'],['fv','Solo fotovoltaica']],
+        'Elige primero: solo se piden los datos de lo que se ofrece.');
 
   /* CLIENTE */
   h += '<h2>1 · Comercial y cliente</h2>';
@@ -1170,45 +1179,49 @@ function renderFicha(){
   h += txt('telefono','Teléfono','600 00 00 00','','tel');
   h += txt('email','Email del cliente','cliente@correo.es','Sin email el motor no puede enviar la propuesta.','email');
   h += txt('cups','CUPS','ES0000000000000000AB0F','Está en la factura de la luz.');
-  h += seg('aero','Aerotermia en esta obra',[['si','Sí'],['no','No']]);
-  h += seg('pv','Fotovoltaica en esta obra',[['si','Sí'],['no','No']],'Puede ir una, otra o las dos.');
-  h += seg('bateria','Batería',[['si','Sí'],['no','No']]);
+  if(r.conFV) h += seg('bateria','Batería',[['si','Sí'],['no','No']]);
   h += seg('cargador','Cargador de coche',[['si','Sí'],['no','No']]);
 
   /* VIVIENDA */
   h += '<h2>2 · Vivienda</h2>';
   h += num('m2','Superficie útil a climatizar',5,40,900,'m²',
         '≤160 → 12 kW · 161–270 → 16 kW · 271–350 → 19 kW · 351–500 → 22 kW · por encima, cascada');
-  h += num('altura','Altura libre',0.1,2.2,4,'m');
-  h += seg('zona','Zona climática',[['B','Cálida'],['C','Templada'],['D','Fría · Madrid'],['E','Muy fría']]);
-  h += seg('anyo','Año / aislamiento',[['<1980','Antes de 1980'],['1980-2007','1980–2007'],['2007-2019','2007–2019'],['>2019','CTE 2019']]);
+  if(r.conAero){
+    h += num('altura','Altura libre',0.1,2.2,4,'m');
+    h += seg('zona','Zona climática',[['B','Cálida'],['C','Templada'],['D','Fría · Madrid'],['E','Muy fría']]);
+    h += seg('anyo','Año / aislamiento',[['<1980','Antes de 1980'],['1980-2007','1980–2007'],['2007-2019','2007–2019'],['>2019','CTE 2019']]);
+  }
   h += num('personas','Ocupantes habituales',1,1,14,'pers.');
-  h += num('banos','Baños con ducha',1,1,8,'ud.');
+  if(r.conAero) h += num('banos','Baños con ducha',1,1,8,'ud.');
 
   /* INSTALACIÓN ACTUAL */
   h += '<h2>3 · Instalación actual</h2>';
+  if(r.conAero){
   h += seg('caldera','Generador actual',[['gasoil','Gasóleo'],['gas','Gas natural'],['glp','Propano'],['electrica','Eléctrica'],['ninguno','Obra nueva']]);
   h += num('calderaKw','Potencia caldera actual',2,0,80,'kW');
   h += seg('emisor','Emisor existente',[['suelo','Suelo radiante'],['rad_bt','Radiador baja Tª'],['rad_at','Radiador tradicional'],['fancoil','Fancoil']],
         'Impulsión de referencia: '+(f.emisor==='suelo'?'35–45 °C':f.emisor==='rad_bt'?'45–55 °C':f.emisor==='fancoil'?'45 °C / 7 °C':'60–75 °C'));
+  }
   h += seg('suministro','Suministro eléctrico',[['mono','Monofásico 230 V'],['tri','Trifásico 400 V']]);
   h += num('potenciaContratada','Potencia contratada',0.15,1.15,45,'kW');
-  h += seg('ec','Módulo de conectividad wifi',[['si','Sí, Easy Connect'],['no','No']],
-        'Con Easy Connect la máquina es HT/HTT EC PRO; sin él, HT/HTT PRO.');
-  h += seg('refrig','Refrigeración',[['si','Sí'],['no','No']]);
+  if(r.conAero){
+    h += seg('ec','Módulo de conectividad wifi',[['si','Sí, Easy Connect'],['no','No']],
+          'Con Easy Connect la máquina es HT/HTT EC PRO; sin él, HT/HTT PRO.');
+    h += seg('refrig','Refrigeración',[['si','Sí'],['no','No']]);
+  }
 
   /* GASTOS */
   h += '<h2>4 · Gastos actuales <span style="color:var(--bad)">·</span></h2>';
   h += '<div class="msg e">Estos tres números son los que sostienen toda la venta. <b>No los estimes: pide la factura.</b></div>';
   h += num('gastoLuzMes','Gasto de luz',5,0,1500,'€/mes');
-  h += num('gastoCombAnio','Gasto de gasóleo / gas / propano',50,0,20000,'€/año');
+  if(r.conAero) h += num('gastoCombAnio','Gasto de gasóleo / gas / propano',50,0,20000,'€/año');
   h += num('consumo','Consumo eléctrico anual',200,0,40000,'kWh');
   h += num('ibiAnual','IBI anual de la vivienda',25,0,5000,'€/año','Necesario para cuantificar la bonificación municipal.');
   h += '<details><summary>Ajustar hipótesis del cálculo de ahorro</summary>'+
-       num('factorSust','Factor de sustitución (0 = automático)',5,0,100,'%',
-         'Cuánto cuesta la energía térmica con aerotermia respecto al generador actual. Automático: gasóleo 35% · propano 30% · gas natural 55% · eléctrica 30%. Valor en uso: '+Math.round(r.factor*100)+'%.')+
-       num('coberturaFV','Cobertura fotovoltaica',5,0,95,'%',
-         'Porcentaje del gasto energético que cubre la fotovoltaica. Orientativo: 55–65% sin batería, 70–85% con batería.')+
+       (!r.conAero ? '' : num('factorSust','Factor de sustitución (0 = automático)',5,0,100,'%',
+         'Cuánto cuesta la energía térmica con aerotermia respecto al generador actual. Automático: gasóleo 35% · propano 30% · gas natural 55% · eléctrica 30%. Valor en uso: '+Math.round(r.factor*100)+'%.'))+
+       (!r.conFV ? '' : num('coberturaFV','Cobertura fotovoltaica',5,0,95,'%',
+         'Porcentaje del gasto energético que cubre la fotovoltaica. Orientativo: 55–65% sin batería, 70–85% con batería.'))+
        '</details>';
 
   /* ACS */
@@ -1254,7 +1267,7 @@ function renderFicha(){
         (r.conBat?' · Batería '+eur(r.precioBat):'')+
         (r.conCar?' · Cargador '+eur(r.precioCar):'')+
         '</div></div>';
-  h += num('cae','CAE estimado',100,0,6000,'€','<b>Lo estimas tú</b>, entre 0 y 6.000 €. Es dinero que <b>cobra el cliente</b>, no la empresa: no se descuenta de la factura, va como ahorro. Solo aplica si se sustituye una <b>caldera de combustión</b>: no en obra nueva ni sustituyendo calefacción eléctrica. Hasta que no se emite el certificado es una estimación, así que dilo como tal.');
+  if(r.conAero) h += num('cae','CAE estimado',100,0,6000,'€','<b>Lo estimas tú</b>, entre 0 y 6.000 €. Es dinero que <b>cobra el cliente</b>, no la empresa: no se descuenta de la factura, va como ahorro. Solo aplica si se sustituye una <b>caldera de combustión</b>: no en obra nueva ni sustituyendo calefacción eléctrica. Hasta que no se emite el certificado es una estimación, así que dilo como tal.');
   h += seg('tramoIrpf','Tramo de deducción IRPF',
         [['60','60%'],['40','40%'],['20','20%'],['0','Ninguno']],
         r.tramo.txt+'.<br>Base máxima '+eur(BASE_IRPF)+' por tecnología'+
